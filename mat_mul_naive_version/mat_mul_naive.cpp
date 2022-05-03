@@ -1,11 +1,10 @@
 #include <iostream>
-#include <CL/cl.h>
 #include <CL/sycl.hpp>
 
 #define DEBUG
-#define SELECTOR 1 // 1 for GPU, 0 for CPU
+#define SELECTOR 0 // 1 for GPU, 0 for CPU
 
-using namespace sycl;
+using namespace cl::sycl;
 
 /**
  * @brief Mat Mul
@@ -13,12 +12,13 @@ using namespace sycl;
 
 int main(int argc, char **argv) {
     size_t N, M, K;
-    
+
     if(argc != 4) {
         std::cerr << "Usage: " << argv[0] << " <N> <M> <K>" << std::endl;
 
         return EXIT_FAILURE;
     }
+
 
     N = atoi(argv[1]);
     M = atoi(argv[2]);
@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
     float *A = static_cast<float *>(malloc(sizeof(float) * N * M));
     float *B = static_cast<float *>(malloc(sizeof(float) * M * K));
     float *C = static_cast<float *>(malloc(sizeof(float) * N * K));
-
+    
     // Initialization
     for(int i {0}; i < N * M; i++)
         A[i] = rand() % 5;
@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
         #if SELECTOR
             gpu_selector()  
         #else 
-            host_selector() 
+            cpu_selector() 
         #endif
     };
     

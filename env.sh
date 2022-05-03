@@ -1,4 +1,3 @@
 #!/bin/sh
-export DPCPP_HOME=~/sycl_workspace
-export PATH=~/sycl_workspace/llvm/build/bin:$PATH
-export LD_LIBRARY_PATH=~/sycl_workspace/llvm/build/lib:$LD_LIBRARY_PATH
+export HIPSYCL_TARGETS=cuda:sm_86
+export LD_LIBRARY_PATH=/root/deps/llvm-13.0.1/lib/

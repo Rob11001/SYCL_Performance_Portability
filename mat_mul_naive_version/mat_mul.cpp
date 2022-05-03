@@ -1,12 +1,11 @@
 #include <iostream>
-#include <CL/cl.h>
 #include <CL/sycl.hpp>
 
 #define DEBUG
 #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #define BLOCK_SIZE 4
 
-using namespace sycl;
+using namespace cl::sycl;
 
 /**
  * @brief Mat Mul
@@ -56,54 +55,78 @@ int main(int argc, char **argv) {
         buffer<float, 1> B_buf {B, M * K};
         buffer<float, 1> C_buf {C, N * K};
 
-        myQueue.submit([&] (handler& cgh) {
+        try {
+            myQueue.submit([&] (handler& cgh) {
             
-            accessor A_acc {A_buf, cgh, read_only};
-            accessor B_acc {B_buf, cgh, read_only};
-            accessor C_acc {C_buf, cgh, write_only, no_init};
-            
-            range local {BLOCK_SIZE, BLOCK_SIZE};
-            range global {K, N};
-            accessor<float, 2, access::mode::read_write, access::target::local> tileA {local, cgh};
-            accessor<float, 2, access::mode::read_write, access::target::local> tileB {local, cgh};
-            
-            // TODO: debug
-            cgh.parallel_for(nd_range{global, local}, [=] (nd_item<2> it) {
-                int bx = it.get_group(0);
-                int by = it.get_group(1);
+                accessor A_acc {A_buf, cgh, read_only};
+                accessor B_acc {B_buf, cgh, read_only};
+                accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                int tx = it.get_local_id(0);
-                int ty = it.get_local_id(1);
-
-                int aBegin = M * BLOCK_SIZE * by;
-                int aEnd = aBegin + M - 1;
-                int aStep = BLOCK_SIZE;
-
-                int bBegin = BLOCK_SIZE * bx;
-                int bStep = BLOCK_SIZE * K;
+                range local {BLOCK_SIZE, BLOCK_SIZE};
+                range global {K, N};
+                //accessor<float, 2, access::mode::read_write, access::target::local> tileA {local, cgh};
+                //accessor<float, 2, access::mode::read_write, access::target::local> tileB {local, cgh};
+                local_accessor<float, 2> tileA {local, cgh};
+                local_accessor<float, 2> tileB {local, cgh};
                 
-                float Csub = 0.0f;
-                for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
-                    tileA[ty][tx] = A_acc[a + M * ty + tx];
-                    tileB[ty][tx] = B_acc[b + K * ty + tx];
+                // TODO: debug -> work only when C matrix dimensions are multiple of BLOCK_SIZE
+                cgh.parallel_for(nd_range{global, local}, [=] (nd_item<2> it) {
+                    // Global index
+                    int x = it.get_global_id(0);
+                    int y = it.get_global_id(1);
 
-                    it.barrier(access::fence_space::local_space);
+                    // Group index
+                    int bx = it.get_group(0);
+                    int by = it.get_group(1);
+                    
+                    // Local index in the work-group
+                    int tx = it.get_local_id(0);
+                    int ty = it.get_local_id(1);
 
-                    for(int k = 0; k < BLOCK_SIZE; k++)
-                        Csub += tileA[ty][k] * tileB[k][tx];
+                    // Index of the first tile to be processed
+                    int aBegin = M * BLOCK_SIZE * by;
+                    // Index of the last tile of A matrix to be processed
+                    int aEnd = aBegin + M - 1;
+                    // Step size
+                    int aStep = BLOCK_SIZE;
 
-                    it.barrier(access::fence_space::local_space);
-                }
+                    // Index of the first tile of B matrix to be processed
+                    int bBegin = BLOCK_SIZE * bx;
+                    // Step size
+                    int bStep = BLOCK_SIZE * K;
+                    
+                    float Csub = 0.0f;
+                    for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
+                        // Load the tile in the local memory (each thread loads one element of A and one element of B)
+                        tileA[ty][tx] = A_acc[a + M * ty + tx];
+                        tileB[ty][tx] = B_acc[b + K * ty + tx];
+            
+                        it.barrier(access::fence_space::local_space);
+                        
+                        // Each thread computes one element using the loaded tile
+                        for(int k = 0; k < BLOCK_SIZE; k++)
+                            Csub += tileA[ty][k] * tileB[k][tx];
+                        
+                        it.barrier(access::fence_space::local_space);
+                    }
 
-                int x = it.get_global_id(0);
-                int y = it.get_global_id(1);
-                // Writes in global memory
-                C_acc[x + y * K] = Csub;
-            }); 
-          
-        }); 
+                    // Writes in global memory
+                    C_acc[x + y * K] = Csub;
+                });             
+            });
+
+            myQueue.wait_and_throw();    
+        } catch(const std::exception& e) {
+            std::cerr << e.what() << '\n';
+            // Deallocate memory
+            free(A);
+            free(B);
+            free(C);
+            
+            return EXIT_FAILURE;
+        }
+       
     }
-
 
     #ifdef DEBUG
         for(int i {0}; i < N ; i++) {
