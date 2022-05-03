@@ -38,19 +38,18 @@ int main(int argc, char **argv) {
     
     for(int i {0}; i < N * K; i++)
         C[i] = 0.0f;
-
-
-    // Get the queue 
-    queue myQueue { 
-        #if SELECTOR
-            gpu_selector()  
-        #else 
-            host_selector() 
-        #endif
-    };
     
     // Use of RAII
     {
+        // Get the queue 
+        queue myQueue { 
+            #if SELECTOR
+                gpu_selector()  
+            #else 
+                host_selector() 
+            #endif
+        };
+
         buffer<float, 1> A_buf {A, N * M};
         buffer<float, 1> B_buf {B, M * K};
         buffer<float, 1> C_buf {C, N * K};
@@ -64,8 +63,6 @@ int main(int argc, char **argv) {
                 
                 range local {BLOCK_SIZE, BLOCK_SIZE};
                 range global {K, N};
-                //accessor<float, 2, access::mode::read_write, access::target::local> tileA {local, cgh};
-                //accessor<float, 2, access::mode::read_write, access::target::local> tileB {local, cgh};
                 local_accessor<float, 2> tileA {local, cgh};
                 local_accessor<float, 2> tileB {local, cgh};
                 
