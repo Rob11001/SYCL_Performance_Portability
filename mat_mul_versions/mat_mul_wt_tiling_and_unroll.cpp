@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
                 range local {BLOCK_SIZE, BLOCK_SIZE};
-                range global {K, N};
+                range global {N, K};
                 local_accessor<float, 2> tileA {local, cgh};
                 local_accessor<float, 2> tileB {local, cgh};
                 
@@ -81,14 +81,14 @@ int main(int argc, char **argv) {
                     int ty = it.get_local_id(1);
 
                     // Index of the first tile to be processed
-                    int aBegin = M * BLOCK_SIZE * by;
+                    int aBegin = M * BLOCK_SIZE * bx;
                     // Index of the last tile of A matrix to be processed
                     int aEnd = aBegin + M - 1;
                     // Step size
                     int aStep = BLOCK_SIZE;
 
                     // Index of the first tile of B matrix to be processed
-                    int bBegin = BLOCK_SIZE * bx;
+                    int bBegin = BLOCK_SIZE * by;
                     // Step size
                     int bStep = BLOCK_SIZE * K;
                     
@@ -96,20 +96,20 @@ int main(int argc, char **argv) {
                     #pragma unroll
                     for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
                         // Load the tile in the local memory (each thread loads one element of A and one element of B)
-                        tileA[ty][tx] = A_acc[a + M * ty + tx];
-                        tileB[ty][tx] = B_acc[b + K * ty + tx];
+                        tileA[tx][ty] = A_acc[a + M * tx + ty];
+                        tileB[tx][ty] = B_acc[b + K * tx + ty];
             
                         it.barrier(access::fence_space::local_space);
                         
                         // Each thread computes one element using the loaded tile
                         for(int k = 0; k < BLOCK_SIZE; k++)
-                            Csub += tileA[ty][k] * tileB[k][tx];
+                            Csub += tileA[tx][k] * tileB[k][ty];
                         
                         it.barrier(access::fence_space::local_space);
                     }
 
                     // Writes in global memory
-                    C_acc[x + y * K] = Csub;
+                    C_acc[y + x * K] = Csub;
                 });             
             });
 

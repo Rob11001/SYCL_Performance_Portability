@@ -63,20 +63,20 @@ int main(int argc, char **argv) {
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
                 range local {BLOCK_SIZE, BLOCK_SIZE};
-                range global {K, N};
+                range global {N, K};
                 
                 cgh.parallel_for(nd_range{global, local}, [=] (nd_item<2> it) {
-                    int x = it.get_global_id(0);
-                    int y = it.get_global_id(1); 
+                    int row = it.get_global_id(0);
+                    int col = it.get_global_id(1); 
                 
                     // Each thread calculate an element of the C matrix
                     float acc = 0;
                     for (size_t i = 0; i < M; i++) {
-                        acc += A_acc[i + y * M] * B_acc[x + i * K]; // Reads from global memory
+                        acc += A_acc[i + row * M] * B_acc[col + i * K]; // Reads from global memory
                     }
 
                     // Writes in global memory
-                    C_acc[x + y * K] = acc;
+                    C_acc[col + row * K] = acc;
                 }); 
             
             });
