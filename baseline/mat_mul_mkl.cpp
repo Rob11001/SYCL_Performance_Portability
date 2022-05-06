@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
         C[i] = 0.0f;
 
     cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 
-                N, K, M, alpha, A, N, B, M, beta, C, N);
+                N, K, M, alpha, A, M, B, K, beta, C, K);
 
     #ifdef DEBUG
         for(int i {0}; i < N ; i++) {
