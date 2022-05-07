@@ -5,7 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "/usr/local/cuda-11.4/targets/x86_64-linux/include/*",
-                "/usr/include/mkl/*"
+                "/usr/include/mkl/*",
+                "/usr/include/c++/11/*"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

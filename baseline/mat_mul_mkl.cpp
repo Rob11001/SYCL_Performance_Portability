@@ -1,7 +1,11 @@
 #include <iostream>
 #include "mkl.h"
+#include <chrono>
 
 #define DEBUG
+
+using namespace std;
+using namespace chrono;
 
 int main(int argc, char **argv) {
     float *A, *B, *C;
@@ -41,30 +45,42 @@ int main(int argc, char **argv) {
     for(int i {0}; i < N * K; i++)
         C[i] = 0.0f;
 
+    auto start = steady_clock::now();
+
     cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 
                 N, K, M, alpha, A, M, B, K, beta, C, K);
 
-    #ifdef DEBUG
-        for(int i {0}; i < N ; i++) {
-            for(int j {0}; j < M; j++)
-                std::cout << "A[" << i << "][" << j << "] = " << A[i * M + j] << " ";
-            std::cout << std::endl;
-        }
-        std::cout << std::endl;
-        
-        for(int i {0}; i < M ; i++) {
-            for(int j {0}; j < K; j++)
-                std::cout << "B[" << i << "][" << j << "] = " << B[i * K + j] << " ";
-            std::cout << std::endl;
-        }
-        std::cout << std::endl;
+    auto end = steady_clock::now();
 
-        for(int i {0}; i < N ; i++) {
-            for(int j {0}; j < K; j++)
-                std::cout << "C[" << i << "][" << j << "] = " << C[i * K + j] << " ";
+    #ifdef DEBUG
+        cout << "Elapsed time in milliseconds: " << duration_cast<chrono::milliseconds>(end - start).count() << " ms" << endl;
+        
+        if(N < 32 && M < 32 && K < 32) {
+            for(int i {0}; i < N ; i++) {
+                for(int j {0}; j < M; j++)
+                    std::cout << "A[" << i << "][" << j << "] = " << A[i * M + j] << " ";
+                std::cout << std::endl;
+            }
             std::cout << std::endl;
+            
+            for(int i {0}; i < M ; i++) {
+                for(int j {0}; j < K; j++)
+                    std::cout << "B[" << i << "][" << j << "] = " << B[i * K + j] << " ";
+                std::cout << std::endl;
+            }
+            std::cout << std::endl;
+
+            for(int i {0}; i < N ; i++) {
+                for(int j {0}; j < K; j++)
+                    std::cout << "C[" << i << "][" << j << "] = " << C[i * K + j] << " ";
+                std::cout << std::endl;
+            }
         }
         
+    #endif
+
+    #ifndef DEBUG
+        cout << duration_cast<chrono::milliseconds>(end - start).count() << " ";
     #endif
 
     mkl_free(A);
