@@ -1,9 +1,13 @@
 #include <iostream>
 #include <CL/sycl.hpp>
 
-#define DEBUG
-#define SELECTOR 1 // 1 for GPU, 0 for CPU
-#define BLOCK_SIZE 16
+#ifndef SELECTOR
+    #define SELECTOR 1 // 1 for GPU, 0 for CPU
+#endif
+
+#ifndef TILE_SIZE
+    #define TILE_SIZE 4
+#endif
 
 using namespace cl::sycl;
 using namespace std::chrono;
@@ -69,12 +73,12 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {BLOCK_SIZE, BLOCK_SIZE};
+                range local {TILE_SIZE, TILE_SIZE};
                 range global {N, K};
                 local_accessor<float, 2> tileA {local, cgh};
                 local_accessor<float, 2> tileB {local, cgh};
                 
-                // TODO: debug -> work only when C matrix dimensions are multiple of BLOCK_SIZE
+                // TODO: debug -> work only when C matrix dimensions are multiple of TILE_SIZE
                 cgh.parallel_for(nd_range{global, local}, [=] (nd_item<2> it) {
                     // Global index
                     int x = it.get_global_id(0);
@@ -89,16 +93,16 @@ int main(int argc, char **argv) {
                     int ty = it.get_local_id(1);
 
                     // Index of the first tile to be processed
-                    int aBegin = M * BLOCK_SIZE * bx;
+                    int aBegin = M * TILE_SIZE * bx;
                     // Index of the last tile of A matrix to be processed
                     int aEnd = aBegin + M - 1;
                     // Step size
-                    int aStep = BLOCK_SIZE;
+                    int aStep = TILE_SIZE;
 
                     // Index of the first tile of B matrix to be processed
-                    int bBegin = BLOCK_SIZE * by;
+                    int bBegin = TILE_SIZE * by;
                     // Step size
-                    int bStep = BLOCK_SIZE * K;
+                    int bStep = TILE_SIZE * K;
                     
                     float Csub = 0.0f;
                     for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
@@ -109,7 +113,7 @@ int main(int argc, char **argv) {
                         it.barrier(access::fence_space::local_space);
                         
                         // Each thread computes one element using the loaded tile
-                        for(int k = 0; k < BLOCK_SIZE; k++)
+                        for(int k = 0; k < TILE_SIZE; k++)
                             Csub += tileA[tx][k] * tileB[k][ty];
                         
                         it.barrier(access::fence_space::local_space);

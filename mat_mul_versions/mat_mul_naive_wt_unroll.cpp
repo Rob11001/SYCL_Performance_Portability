@@ -2,9 +2,13 @@
 #include <CL/sycl.hpp>
 #include <chrono>
 
-#define DEBUG
-#define SELECTOR 1 // 1 for GPU, 0 for CPU
-#define BLOCK_SIZE 4
+#ifndef SELECTOR
+    #define SELECTOR 1 // 1 for GPU, 0 for CPU
+#endif
+
+#ifndef TILE_SIZE
+    #define TILE_SIZE 4
+#endif
 
 using namespace cl::sycl;
 using namespace std::chrono;
@@ -72,7 +76,7 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {BLOCK_SIZE, BLOCK_SIZE};
+                range local {TILE_SIZE, TILE_SIZE};
                 range global {N, K};
                 
                 cgh.parallel_for(nd_range{global, local}, [=] (nd_item<2> it) {
