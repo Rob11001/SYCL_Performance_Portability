@@ -2,7 +2,7 @@
 #include "mkl.h"
 #include <chrono>
 
-#define DEBUG
+//#define DEBUG
 
 using namespace std;
 using namespace chrono;

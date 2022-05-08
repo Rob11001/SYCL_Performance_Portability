@@ -10,7 +10,7 @@
 using namespace std;
 using namespace chrono;
 
-#define DEBUG
+//#define DEBUG
 
 int main (int argc, char ** argv) {
     // For cublas library
