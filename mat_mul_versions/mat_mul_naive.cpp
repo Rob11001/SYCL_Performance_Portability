@@ -37,10 +37,10 @@ int main(int argc, char **argv) {
     
     // Initialization
     for(int i {0}; i < N * M; i++)
-        A[i] = rand() % 5;
+        A[i] = 1.0f; //rand() % 5;
     
     for(int i {0}; i < M * K; i++)
-        B[i] = rand() % 5;
+        B[i] = 1.0f; //rand() % 5;
     
     for(int i {0}; i < N * K; i++)
         C[i] = 0.0f;
@@ -48,8 +48,8 @@ int main(int argc, char **argv) {
     // Use of RAII
     auto start = steady_clock::now();
 
-    uint64_t start_time, end_time;
-
+    uint64_t start_time, end_time, start_submit;
+    event e;
     {
         
         try {
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
             buffer<float, 1> B_buf {B, M * K};
             buffer<float, 1> C_buf {C, N * K};
 
-            auto event = myQueue.submit([&] (handler& cgh) {
+            e = myQueue.submit([&] (handler& cgh) {
                 
                 accessor A_acc {A_buf, cgh, read_only};
                 accessor B_acc {B_buf, cgh, read_only};
@@ -92,15 +92,7 @@ int main(int argc, char **argv) {
                     // Writes in global memory
                     C_acc[col + row * K] = acc;
                 }); 
-
-            
             });
-
-            event.wait();
-            end_time = event.get_profiling_info<
-                    cl::sycl::info::event_profiling::command_end>();
-            start_time = event.get_profiling_info<
-                    cl::sycl::info::event_profiling::command_start>();
             
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';
@@ -108,6 +100,11 @@ int main(int argc, char **argv) {
     }
 
     auto end = steady_clock::now();
+    e.wait();
+    end_time = e.get_profiling_info<
+            cl::sycl::info::event_profiling::command_end>();
+    start_time = e.get_profiling_info<
+            cl::sycl::info::event_profiling::command_start>();
 
     #ifdef DEBUG
         std::cout << "Elapsed time in milliseconds: " << duration_cast<milliseconds>(end - start).count() << " ms" << std::endl;
@@ -135,13 +132,18 @@ int main(int argc, char **argv) {
             }
         }
 
+        for(int i {0}; i < N ; i++) 
+            for(int j {0}; j < K; j++)
+                if(C[i * K + j] != M) {
+                    std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
+                    i = N;
+                    break;
+                }
     #endif
 
     #ifndef DEBUG
         std::cout << duration_cast<milliseconds>(end - start).count() << ", " << ((end_time - start_time) / 1.0e3 ) << "";
     #endif
-
-    std::cout << TILE_SIZE << std::endl;
 
     // Deallocate memory
     free(A);

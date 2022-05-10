@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
     auto start = steady_clock::now();
 
     uint64_t start_time, end_time;
+    event e;
 
     {
         // Get the queue 
@@ -67,8 +68,7 @@ int main(int argc, char **argv) {
         buffer<float, 1> C_buf {C, N * K};
 
         try {
-            auto event = myQueue.submit([&] (handler& cgh) {
-            
+            e = myQueue.submit([&] (handler& cgh) {
                 accessor A_acc {A_buf, cgh, read_only};
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
@@ -121,15 +121,11 @@ int main(int argc, char **argv) {
 
                     // Writes in global memory
                     C_acc[y + x * K] = Csub;
-                });             
+                });
+            
             });
 
-            event.wait();
-            end_time = event.get_profiling_info<
-                    cl::sycl::info::event_profiling::command_end>();
-            start_time = event.get_profiling_info<
-                    cl::sycl::info::event_profiling::command_start>();
-
+            myQueue.wait_and_throw();
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';
             // Deallocate memory
@@ -143,6 +139,11 @@ int main(int argc, char **argv) {
     }
 
     auto end = steady_clock::now();
+    e.wait();
+    end_time = e.get_profiling_info<
+            cl::sycl::info::event_profiling::command_end>();
+    start_time = e.get_profiling_info<
+            cl::sycl::info::event_profiling::command_start>();
 
      #ifdef DEBUG
         std::cout << "Elapsed time in milliseconds: " << duration_cast<milliseconds>(end - start).count() << " ms" << std::endl;
@@ -169,6 +170,14 @@ int main(int argc, char **argv) {
                 std::cout << std::endl;
             }
         }
+
+        for(int i {0}; i < N ; i++) 
+            for(int j {0}; j < K; j++)
+                if(C[i * K + j] != M) {
+                    std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
+                    i = N;
+                    break;
+                }
 
     #endif
 

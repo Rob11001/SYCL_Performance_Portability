@@ -9,8 +9,8 @@ csv_name = "test"
 # Files compilation
 print("Compiling...")
 
-os.system("nvcc --gpu-architecture=compute_86 {0}.cpp -o {1} -lcublas".format(files[0], files[0]))
-os.system("dpcpp {0}.cpp -DMKL_ILP64 -qmkl=parallel -o {1} -O3".format(files[1], files[1]))
+os.system("nvcc --gpu-architecture=compute_86 {0}.cpp -o {1}.out -lcublas".format(files[0], files[0]))
+os.system("dpcpp {0}.cpp -DMKL_ILP64 -qmkl=parallel -o {1}.out -O3".format(files[1], files[1]))
 
 print("done")
 

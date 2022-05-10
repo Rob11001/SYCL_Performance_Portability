@@ -10,6 +10,10 @@
     #define TILE_SIZE 4
 #endif
 
+#ifndef UNROLL_STEP_SIZE
+    #define UNROLL_STEP_SIZE 1
+#endif
+
 using namespace cl::sycl;
 using namespace std::chrono;
 
@@ -37,10 +41,10 @@ int main(int argc, char **argv) {
     
     // Initialization
     for(int i {0}; i < N * M; i++)
-        A[i] = rand() % 5;
+        A[i] = 2.0f; //rand() % 5;
     
     for(int i {0}; i < M * K; i++)
-        B[i] = rand() % 5;
+        B[i] = 1.0f; //rand() % 5;
     
     for(int i {0}; i < N * K; i++)
         C[i] = 0.0f;
@@ -49,7 +53,7 @@ int main(int argc, char **argv) {
     auto start = steady_clock::now();
 
     uint64_t start_time, end_time, start_submit;
-
+    event e;
     {
         
         try {
@@ -70,7 +74,7 @@ int main(int argc, char **argv) {
             buffer<float, 1> B_buf {B, M * K};
             buffer<float, 1> C_buf {C, N * K};
 
-            auto event = myQueue.submit([&] (handler& cgh) {
+            e = myQueue.submit([&] (handler& cgh) {
                 
                 accessor A_acc {A_buf, cgh, read_only};
                 accessor B_acc {B_buf, cgh, read_only};
@@ -85,7 +89,7 @@ int main(int argc, char **argv) {
                 
                     // Each thread calculate an element of the C matrix
                     float acc = 0;
-                    #pragma unroll
+                    #pragma unroll UNROLL_STEP_SIZE
                     for (size_t i = 0; i < M; i++) {
                         acc += A_acc[i + row * M] * B_acc[col + i * K]; // Reads from global memory
                     }
@@ -93,22 +97,19 @@ int main(int argc, char **argv) {
                     // Writes in global memory
                     C_acc[col + row * K] = acc;
                 }); 
-
-            
             });
-
-            event.wait();
-            end_time = event.get_profiling_info<
-                    cl::sycl::info::event_profiling::command_end>();
-            start_time = event.get_profiling_info<
-                    cl::sycl::info::event_profiling::command_start>();
-            
+            myQueue.wait_and_throw();
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';
         }     
     }
 
     auto end = steady_clock::now();
+    e.wait();
+    end_time = e.get_profiling_info<
+            cl::sycl::info::event_profiling::command_end>();
+    start_time = e.get_profiling_info<
+            cl::sycl::info::event_profiling::command_start>();
 
     #ifdef DEBUG
         std::cout << "Elapsed time in milliseconds: " << duration_cast<milliseconds>(end - start).count() << " ms" << std::endl;
@@ -136,6 +137,13 @@ int main(int argc, char **argv) {
             }
         }
 
+        for(int i {0}; i < N ; i++) 
+            for(int j {0}; j < K; j++)
+                if(C[i * K + j] != 2 * M) {
+                    std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
+                    i = N;
+                    break;
+                }
     #endif
 
     #ifndef DEBUG
