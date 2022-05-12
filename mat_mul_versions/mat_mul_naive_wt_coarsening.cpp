@@ -10,6 +10,10 @@
     #define TILE_SIZE 4
 #endif
 
+#ifndef C_FACTOR
+    #define C_FACTOR 2
+#endif
+
 using namespace cl::sycl;
 using namespace std::chrono;
 
@@ -18,6 +22,7 @@ using namespace std::chrono;
 */
 
 // Kernel class
+template<int c_factor>
 class MatMulKernel {
     private:
         size_t N, M, K;
@@ -29,21 +34,38 @@ class MatMulKernel {
         MatMulKernel(const accessor<float, 1, access_mode::read>& A_acc, const accessor<float, 1, access_mode::read>& B_acc, const accessor<float, 1, access_mode::write>& C_acc, const size_t& N, const size_t& M, const size_t& K):
             A_acc(A_acc), B_acc(B_acc), C_acc(C_acc), N(N), M(M), K(K) {}
 
-        void operator()(nd_item<2> it) const {
-            int row = it.get_global_id(0);
-            int col = it.get_global_id(1); 
-        
-            // Each thread calculate an element of the C matrix
-            float acc = 0;
-            for (size_t i = 0; i < M; i++) 
-                acc += A_acc[i + row * M] * B_acc[col + i * K]; // Reads from global memory
+        void operator()(nd_item<2> it) const {  
+            int x = it.get_global_id(0);
+            int y = it.get_global_id(1);
             
-            // Writes in global memory
-            C_acc[col + row * K] = acc;
+            int row[c_factor] {}, col[c_factor] {};
+            #pragma unroll
+            for(int i = 0; i < c_factor; i++) {
+                row[i] = x + i * N/c_factor;
+                col[i] = y + i * K/c_factor;
+            }
             
+            float acc[c_factor][c_factor] {};
+            
+            for(int i = 0; i < M; i++) 
+                #pragma unroll
+                for(int j = 0; j < c_factor; j++) 
+                    #pragma unroll
+                    for(int k = 0; k < c_factor; k++) {
+                        acc[j][k] += A_acc[i + row[j] * M] * B_acc[col[k] + i * K];
+                    }
+            //printf("T: %d,%d: acc[%d][%d]=%f\n", x, y, 2, 3, acc[2][3]);
+
+            #pragma unroll
+            for(int i = 0; i < c_factor; ++i)
+                #pragma unroll
+                for(int j = 0; j < c_factor; ++j)
+                    C_acc[col[j] + row[i] * K] = acc[i][j];
         }
+        
 };
 
+// Main
 int main(int argc, char **argv) {
     size_t N, M, K;
 
@@ -64,10 +86,10 @@ int main(int argc, char **argv) {
     
     // Initialization
     for(int i {0}; i < N * M; i++)
-        A[i] = 1.0f; //rand() % 5;
+        A[i] = (i % 2);
     
     for(int i {0}; i < M * K; i++)
-        B[i] = 1.0f; //rand() % 5;
+        B[i] = (i + 1) % 2;
     
     for(int i {0}; i < N * K; i++)
         C[i] = 0.0f;
@@ -104,11 +126,11 @@ int main(int argc, char **argv) {
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
                 range local {TILE_SIZE, TILE_SIZE};
-                range global {N, K};
+                range global {N/C_FACTOR, K/C_FACTOR};
                 
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel(A_acc, B_acc, C_acc, N, M, K)); 
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<C_FACTOR>(A_acc, B_acc, C_acc, N, M, K)); 
             });
-            
+            myQueue.wait_and_throw();
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';
         }     
@@ -149,7 +171,7 @@ int main(int argc, char **argv) {
 
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+                if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
@@ -159,7 +181,7 @@ int main(int argc, char **argv) {
     #ifndef DEBUG
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+                if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;

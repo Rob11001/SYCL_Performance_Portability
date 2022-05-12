@@ -10,6 +10,14 @@
     #define TILE_SIZE 4
 #endif
 
+#ifndef UNROLL_STEP_SIZE
+    #define UNROLL_STEP_SIZE 1
+#endif
+
+#ifndef C_FACTOR
+    #define C_FACTOR 2
+#endif
+
 using namespace cl::sycl;
 using namespace std::chrono;
 
@@ -18,6 +26,7 @@ using namespace std::chrono;
 */
 
 // Kernel class
+template<int c_factor, int UNROLL_STEP>
 class MatMulKernel {
     private:
         size_t N, M, K;
@@ -30,20 +39,35 @@ class MatMulKernel {
             A_acc(A_acc), B_acc(B_acc), C_acc(C_acc), N(N), M(M), K(K) {}
 
         void operator()(nd_item<2> it) const {
-            int row = it.get_global_id(0);
-            int col = it.get_global_id(1); 
-        
-            // Each thread calculate an element of the C matrix
-            float acc = 0;
-            for (size_t i = 0; i < M; i++) 
-                acc += A_acc[i + row * M] * B_acc[col + i * K]; // Reads from global memory
+            int x = it.get_global_id(0);
+            int y = it.get_global_id(1);
             
-            // Writes in global memory
-            C_acc[col + row * K] = acc;
+            int row[c_factor] {}, col[c_factor] {};
+            #pragma unroll
+            for(size_t i = 0; i < c_factor; i++) {
+                row[i] = x + i * N/c_factor;
+                col[i] = y + i * K/c_factor;
+            }
             
+            float acc[c_factor][c_factor] {};
+            #pragma unroll UNROLL_STEP
+            for(size_t i = 0; i < M; i++) 
+                #pragma unroll
+                for(int j = 0; j < c_factor; j++) 
+                    #pragma unroll
+                    for(int k = 0; k < c_factor; k++) 
+                        acc[j][k] += A_acc[i + row[j] * M] * B_acc[col[k] + i * K];
+            
+            #pragma unroll
+            for(int j = 0; j < c_factor; j++)
+                    #pragma unroll
+                    for(int k = 0; k < c_factor; k++)
+                        C_acc[col[k] + row[j] * K] = acc[j][k];
         }
+        
 };
 
+// Main
 int main(int argc, char **argv) {
     size_t N, M, K;
 
@@ -64,7 +88,7 @@ int main(int argc, char **argv) {
     
     // Initialization
     for(int i {0}; i < N * M; i++)
-        A[i] = 1.0f; //rand() % 5;
+        A[i] = 3.0f; //rand() % 5;
     
     for(int i {0}; i < M * K; i++)
         B[i] = 1.0f; //rand() % 5;
@@ -104,11 +128,11 @@ int main(int argc, char **argv) {
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
                 range local {TILE_SIZE, TILE_SIZE};
-                range global {N, K};
+                range global {N/C_FACTOR, K/C_FACTOR};
                 
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel(A_acc, B_acc, C_acc, N, M, K)); 
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<C_FACTOR, UNROLL_STEP_SIZE>(A_acc, B_acc, C_acc, N, M, K)); 
             });
-            
+            myQueue.wait_and_throw();
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';
         }     
@@ -149,7 +173,7 @@ int main(int argc, char **argv) {
 
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+                if(C[i * K + j] != 3 * M) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
@@ -159,7 +183,7 @@ int main(int argc, char **argv) {
     #ifndef DEBUG
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+                if(C[i * K + j] != 3 * M) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;

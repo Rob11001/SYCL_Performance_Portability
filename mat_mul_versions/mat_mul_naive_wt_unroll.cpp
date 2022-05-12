@@ -21,6 +21,35 @@ using namespace std::chrono;
  * @brief Mat Mul
 */
 
+// Kernel class
+template<int UNROLL_STEP>
+class MatMulKernel {
+    private:
+        size_t N, M, K;
+        accessor<float, 1, access_mode::read> A_acc;
+        accessor<float, 1, access_mode::read> B_acc;
+        accessor<float, 1, access_mode::write> C_acc;
+    
+    public:
+        MatMulKernel(const accessor<float, 1, access_mode::read>& A_acc, const accessor<float, 1, access_mode::read>& B_acc, const accessor<float, 1, access_mode::write>& C_acc, const size_t& N, const size_t& M, const size_t& K):
+            A_acc(A_acc), B_acc(B_acc), C_acc(C_acc), N(N), M(M), K(K) {}
+
+        void operator()(nd_item<2> it) const {
+            int row = it.get_global_id(0);
+            int col = it.get_global_id(1); 
+        
+            // Each thread calculate an element of the C matrix
+            float acc = 0;
+            #pragma unroll UNROLL_STEP
+            for (size_t i = 0; i < M; i++) {
+                acc += A_acc[i + row * M] * B_acc[col + i * K]; // Reads from global memory
+            }
+
+            // Writes in global memory
+            C_acc[col + row * K] = acc; 
+        }
+};
+
 int main(int argc, char **argv) {
     size_t N, M, K;
 
@@ -83,20 +112,7 @@ int main(int argc, char **argv) {
                 range local {TILE_SIZE, TILE_SIZE};
                 range global {N, K};
                 
-                cgh.parallel_for(nd_range{global, local}, [=] (nd_item<2> it) {
-                    int row = it.get_global_id(0);
-                    int col = it.get_global_id(1); 
-                
-                    // Each thread calculate an element of the C matrix
-                    float acc = 0;
-                    #pragma unroll UNROLL_STEP_SIZE
-                    for (size_t i = 0; i < M; i++) {
-                        acc += A_acc[i + row * M] * B_acc[col + i * K]; // Reads from global memory
-                    }
-
-                    // Writes in global memory
-                    C_acc[col + row * K] = acc;
-                }); 
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<UNROLL_STEP_SIZE>(A_acc, B_acc, C_acc, N, M , K)); 
             });
             myQueue.wait_and_throw();
         } catch(const std::exception& e) {
@@ -147,6 +163,13 @@ int main(int argc, char **argv) {
     #endif
 
     #ifndef DEBUG
+        for(int i {0}; i < N ; i++) 
+            for(int j {0}; j < K; j++)
+                if(C[i * K + j] != 2 * M) {
+                    std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
+                    i = N;
+                    break;
+                }
         std::cout << duration_cast<milliseconds>(end - start).count() << ", " << ((end_time - start_time) / 1.0e3 ) << "";
     #endif
 

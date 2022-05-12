@@ -5,6 +5,7 @@ files = ("mat_mul_naive", "mat_mul_naive_wt_unroll", "mat_mul_wt_tiling", "mat_m
 sizes = ("1024 1024 1024","2048 2048 2048")#, "4096 4096 4096", "8192 8192 8192")
 tile_sizes = [4, 8, 16, 32]
 step_sizes = [4, 8, 16, 32, 64, 128, 256]
+coarse_factors = [2, 4, 8, 16]  # Ricorda di verificare se c'è errore (TODO: vedere di modificare quando avviene la stampa dell'errore)
 tests = 1
 csv_name = "test"
 device_type = (1, 0)
@@ -56,6 +57,7 @@ for device in device_type:
                     for i in range(tests):
                         print("./{0}.out {1}".format(file, size))
                         times = os.popen("./{0}.out {1}".format(file, size)).read()
+                        # Controllare se times contiene "Error:"
                         test_line += "{0}, ".format(times)
                     csv_file.write("{0}\n".format(test_line[0: len(test_line) - 2]))
                 print("Done")

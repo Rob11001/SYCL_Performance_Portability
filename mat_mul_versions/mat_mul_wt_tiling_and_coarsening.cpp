@@ -9,10 +9,6 @@
     #define TILE_SIZE 4
 #endif
 
-#ifndef UNROLL_STEP_SIZE
-    #define UNROLL_STEP_SIZE 1
-#endif
-
 using namespace cl::sycl;
 using namespace std::chrono;
 
@@ -21,7 +17,7 @@ using namespace std::chrono;
 */
 
 // Kernel class
-template<int tile_size, int UNROLL_STEP>
+template<int tile_size>
 class MatMulKernel {
     private:
         size_t N, M, K;
@@ -36,9 +32,6 @@ class MatMulKernel {
             A_acc(A_acc), B_acc(B_acc), C_acc(C_acc), N(N), M(M), K(K), tileA(tileA), tileB(tileB) {}
 
         void operator()(nd_item<2> it) const {
-            // Global index
-            int x = it.get_global_id(0);
-            int y = it.get_global_id(1);
             // Group index
             int bx = it.get_group(0);
             int by = it.get_group(1);
@@ -47,34 +40,51 @@ class MatMulKernel {
             int tx = it.get_local_id(0);
             int ty = it.get_local_id(1);
 
+            // Global index
+            int x = bx * 2 * tile_size + tx;
+            int y = by * 2 * tile_size + ty;
+
             // Index of the first tile to be processed
-            int aBegin = M * tile_size * bx;
+            int aBegin = 2 * M * tile_size * bx;
             // Index of the last tile of A matrix to be processed
             int aEnd = aBegin + M - 1;
             // Step size
-            int aStep = tile_size;
+            int aStep = 2 * tile_size;
             // Index of the first tile of B matrix to be processed
-            int bBegin = tile_size * by;
+            int bBegin = 2 * tile_size * by;
             // Step size
-            int bStep = tile_size * K;
+            int bStep = 2 * tile_size * K;
             
-            float Csub = 0.0f;
+            float Csub_1 = 0.0f, Csub_2 = 0.0f, Csub_3 = 0.0f, Csub_4 = 0.0f;
             for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
                 // Load the tile in the local memory (each thread loads one element of A and one element of B)
                 tileA[tx][ty] = A_acc[a + M * tx + ty];
+                tileA[tx][ty + tile_size] = A_acc[a + M * tx + ty + tile_size];
+                tileA[tx + tile_size][ty] = A_acc[a + M * tx + ty + tile_size * M];
+                tileA[tx + tile_size][ty + tile_size] = A_acc[a + M * tx + ty + tile_size + tile_size * M];
+
                 tileB[tx][ty] = B_acc[b + K * tx + ty];
-    
+                tileB[tx][ty + tile_size] = B_acc[b + K * tx + ty + tile_size];
+                tileB[tx + tile_size][ty] = B_acc[b + K * tx + ty + tile_size * K];
+                tileB[tx + tile_size][ty + tile_size] = B_acc[b + K * tx + ty + tile_size + tile_size * K];
+
                 it.barrier(access::fence_space::local_space);
                 
                 // Each thread computes one element using the loaded tile
-                #pragma unroll UNROLL_STEP
-                for(int k = 0; k < tile_size; k++)
-                    Csub += tileA[tx][k] * tileB[k][ty];
+                for(int k = 0; k < tile_size * 2 ; k++) {
+                    Csub_1 += tileA[tx][k] * tileB[k][ty];
+                    Csub_2 += tileA[tx][k] * tileB[k][ty + tile_size];
+                    Csub_3 += tileA[tx + tile_size][k] * tileB[k][ty];
+                    Csub_4 += tileA[tx + tile_size][k] * tileB[k][ty + tile_size];
+                }
                 
                 it.barrier(access::fence_space::local_space);
             }
             // Writes in global memory
-            C_acc[y + x * K] = Csub; 
+            C_acc[y + x * K] = Csub_1;
+            C_acc[y + x * K + tile_size] = Csub_2; 
+            C_acc[y + x * K + tile_size * K] = Csub_3;
+            C_acc[y + x * K + tile_size + tile_size * K] = Csub_4; 
         }
 };
 
@@ -99,10 +109,10 @@ int main(int argc, char **argv) {
 
     // Initialization
     for(int i {0}; i < N * M; i++)
-        A[i] = 1.0f; // rand() % 5;
+        A[i] = (i % 2);
     
     for(int i {0}; i < M * K; i++)
-        B[i] = 1.0f; //rand() % 5;
+        B[i] = (i + 1) % 2;
     
     for(int i {0}; i < N * K; i++)
         C[i] = 0.0f;
@@ -137,62 +147,15 @@ int main(int argc, char **argv) {
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
                 range local {TILE_SIZE, TILE_SIZE};
-                range global {N, K};
-                local_accessor<float, 2> tileA {local, cgh};
-                local_accessor<float, 2> tileB {local, cgh};
+                range global {N/2, K/2};
+                local_accessor<float, 2> tileA {range {2 * TILE_SIZE, TILE_SIZE * 2}, cgh};
+                local_accessor<float, 2> tileB {range {2 * TILE_SIZE, TILE_SIZE * 2}, cgh};
                 
                 // TODO: debug -> work only when C matrix dimensions are multiple of TILE_SIZE
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE, UNROLL_STEP_SIZE>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
-                
-                /*[=] (nd_item<2> it) {
-                    // Global index
-                    int x = it.get_global_id(0);
-                    int y = it.get_global_id(1);
-
-                    // Group index
-                    int bx = it.get_group(0);
-                    int by = it.get_group(1);
-                    
-                    // Local index in the work-group
-                    int tx = it.get_local_id(0);
-                    int ty = it.get_local_id(1);
-
-                    // Index of the first tile to be processed
-                    int aBegin = M * TILE_SIZE * bx;
-                    // Index of the last tile of A matrix to be processed
-                    int aEnd = aBegin + M - 1;
-                    // Step size
-                    int aStep = TILE_SIZE;
-
-                    // Index of the first tile of B matrix to be processed
-                    int bBegin = TILE_SIZE * by;
-                    // Step size
-                    int bStep = TILE_SIZE * K;
-                    
-                    float Csub = 0.0f;
-                    for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
-                        // Load the tile in the local memory (each thread loads one element of A and one element of B)
-                        tileA[tx][ty] = A_acc[a + M * tx + ty];
-                        tileB[tx][ty] = B_acc[b + K * tx + ty];
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
             
-                        it.barrier(access::fence_space::local_space);
-                        
-                        // Each thread computes one element using the loaded tile
-                        
-                        #pragma unroll UNROLL_STEP_SIZE
-                        for(int k = 0; k < TILE_SIZE; k++)
-                            Csub += tileA[tx][k] * tileB[k][ty];
-                        
-                        
-                        it.barrier(access::fence_space::local_space);
-                    }
-
-                    // Writes in global memory
-                    C_acc[y + x * K] = Csub;
-                });
-                */
             });
-            
+
             myQueue.wait_and_throw();
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';
@@ -241,7 +204,7 @@ int main(int argc, char **argv) {
 
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+                if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
@@ -252,7 +215,7 @@ int main(int argc, char **argv) {
     #ifndef DEBUG
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+                if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
