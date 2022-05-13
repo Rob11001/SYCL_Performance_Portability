@@ -10,10 +10,6 @@
     #define TILE_SIZE 4
 #endif
 
-#ifndef UNROLL_STEP_SIZE
-    #define UNROLL_STEP_SIZE 1
-#endif
-
 using namespace cl::sycl;
 using namespace std::chrono;
 
@@ -22,7 +18,6 @@ using namespace std::chrono;
 */
 
 // Kernel class
-template<int UNROLL_STEP>
 class MatMulKernel {
     private:
         size_t N, M, K;
@@ -40,7 +35,11 @@ class MatMulKernel {
         
             // Each thread calculate an element of the C matrix
             float acc = 0;
-            #pragma unroll UNROLL_STEP
+            #ifndef UNROLL_STEP_SIZE 
+                #pragma unroll
+            #else
+                #pragma unroll UNROLL_STEP_SIZE 
+            #endif
             for (size_t i = 0; i < M; i++) {
                 acc += A_acc[i + row * M] * B_acc[col + i * K]; // Reads from global memory
             }
@@ -112,7 +111,7 @@ int main(int argc, char **argv) {
                 range local {TILE_SIZE, TILE_SIZE};
                 range global {N, K};
                 
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<UNROLL_STEP_SIZE>(A_acc, B_acc, C_acc, N, M , K)); 
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel(A_acc, B_acc, C_acc, N, M , K)); 
             });
             myQueue.wait_and_throw();
         } catch(const std::exception& e) {

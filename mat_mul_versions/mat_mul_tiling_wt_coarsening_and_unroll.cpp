@@ -9,8 +9,8 @@
     #define TILE_SIZE 4
 #endif
 
-#ifndef UNROLL_STEP_SIZE
-    #define UNROLL_STEP_SIZE 1
+#ifndef C_FACTOR
+    #define C_FACTOR 2
 #endif
 
 using namespace cl::sycl;
@@ -21,7 +21,7 @@ using namespace std::chrono;
 */
 
 // Kernel class
-template<int tile_size, int UNROLL_STEP>
+template<int tile_size, int coarse_factor>
 class MatMulKernel {
     private:
         size_t N, M, K;
@@ -33,12 +33,9 @@ class MatMulKernel {
     
     public:
         MatMulKernel(const accessor<float, 1, access_mode::read>& A_acc, const accessor<float, 1, access_mode::read>& B_acc, const accessor<float, 1, access_mode::write>& C_acc, const size_t& N, const size_t& M, const size_t& K, const local_accessor<float, 2>& tileA, local_accessor<float, 2>& tileB):
-            A_acc(A_acc), B_acc(B_acc), C_acc(C_acc), N(N), M(M), K(K), tileA(tileA), tileB(tileB) {}
+            N(N), M(M), K(K), A_acc(A_acc), B_acc(B_acc), C_acc(C_acc), tileA(tileA), tileB(tileB) {}
 
         void operator()(nd_item<2> it) const {
-            // Global index
-            int x = it.get_global_id(0);
-            int y = it.get_global_id(1);
             // Group index
             int bx = it.get_group(0);
             int by = it.get_group(1);
@@ -47,34 +44,62 @@ class MatMulKernel {
             int tx = it.get_local_id(0);
             int ty = it.get_local_id(1);
 
+            // Global index
+            int x = bx * (coarse_factor * tile_size) + tx; // every work-group load a tile of coarse_factor x tile_size dimension
+            int y = by * (coarse_factor * tile_size) + ty;
+
             // Index of the first tile to be processed
-            int aBegin = M * tile_size * bx;
+            int aBegin = M * (coarse_factor * tile_size) * bx;
             // Index of the last tile of A matrix to be processed
             int aEnd = aBegin + M - 1;
             // Step size
-            int aStep = tile_size;
+            int aStep = coarse_factor * tile_size;
             // Index of the first tile of B matrix to be processed
-            int bBegin = tile_size * by;
+            int bBegin = (coarse_factor * tile_size) * by;
             // Step size
-            int bStep = tile_size * K;
+            int bStep = (coarse_factor * tile_size) * K;
             
-            float Csub = 0.0f;
-            for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
-                // Load the tile in the local memory (each thread loads one element of A and one element of B)
-                tileA[tx][ty] = A_acc[a + M * tx + ty];
-                tileB[tx][ty] = B_acc[b + K * tx + ty];
-    
+            float Csub[coarse_factor][coarse_factor] {};
+            for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {    
+                // Load the tile in the local memory (each thread loads coarse_factor x coarse_factor elements from A and from B)
+                #pragma unroll
+                for(int i {0}; i < coarse_factor; i++)
+                    #pragma unroll
+                    for(int j {0}; j < coarse_factor; j++) {
+                        tileA[tx + tile_size * i][ty + tile_size * j] = A_acc[a + M * tx + ty + tile_size * j + tile_size * M * i];
+                        tileB[tx + tile_size * i][ty + tile_size * j] = B_acc[a + K * tx + ty + tile_size * j + tile_size * K * i];
+                    }
+
                 it.barrier(access::fence_space::local_space);
-                
-                // Each thread computes one element using the loaded tile
-                #pragma unroll UNROLL_STEP
-                for(int k = 0; k < tile_size; k++)
-                    Csub += tileA[tx][k] * tileB[k][ty];
-                
+               
+                // Each thread computes coarse_factor elements using the loaded tile
+                #ifndef UNROLL_STEP_SIZE 
+                    #pragma unroll
+                #else
+                    #pragma unroll UNROLL_STEP_SIZE 
+                #endif
+                for(int k = 0; k < tile_size * coarse_factor; k++)
+                    #pragma unroll
+                    for(int i {0}; i < coarse_factor; i++)
+                        #pragma unroll
+                        for(int j {0}; j < coarse_factor; j++) {
+                            Csub[i][j] += tileA[tx + tile_size * i][k] * tileB[k][ty + tile_size * j];
+                        }
+               
                 it.barrier(access::fence_space::local_space);
             }
-            // Writes in global memory
-            C_acc[y + x * K] = Csub; 
+
+            // Writes in global memory the coarse_factor elements that thread has computed
+            int baseline = y + x * K;
+            #pragma unroll
+            for(int i {0}; i < coarse_factor; i++)
+                #pragma unroll
+                for(int j {0}; j < coarse_factor; j++) {
+                    C_acc[baseline + tile_size * j + tile_size * K * i] = Csub[i][j];
+                }
+
+            //if(x == 0 && y == 0)
+            //    printf("Hey\n");
         }
 };
 
@@ -98,13 +123,13 @@ int main(int argc, char **argv) {
     float *C = static_cast<float *>(malloc(sizeof(float) * N * K));
 
     // Initialization
-    for(int i {0}; i < N * M; i++)
-        A[i] = 1.0f; // rand() % 5;
+    for(size_t i {0}; i < N * M; i++)
+        A[i] = (i % 2);
     
-    for(int i {0}; i < M * K; i++)
-        B[i] = 1.0f; //rand() % 5;
+    for(size_t i {0}; i < M * K; i++)
+        B[i] = (i + 1) % 2;
     
-    for(int i {0}; i < N * K; i++)
+    for(size_t i {0}; i < N * K; i++)
         C[i] = 0.0f;
     
     // Use of RAII
@@ -137,62 +162,16 @@ int main(int argc, char **argv) {
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
                 range local {TILE_SIZE, TILE_SIZE};
-                range global {N, K};
-                local_accessor<float, 2> tileA {local, cgh};
-                local_accessor<float, 2> tileB {local, cgh};
+                range global {N/C_FACTOR, K/C_FACTOR};
+                local_accessor<float, 2> tileA {range {C_FACTOR * TILE_SIZE, C_FACTOR * TILE_SIZE}, cgh};
+                local_accessor<float, 2> tileB {range {C_FACTOR * TILE_SIZE, C_FACTOR * TILE_SIZE}, cgh};
                 
-                // TODO: debug -> work only when C matrix dimensions are multiple of TILE_SIZE
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE, UNROLL_STEP_SIZE>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
+                // REMEMBER: work only when C matrix dimensions are multiple of TILE_SIZE
                 
-                /*[=] (nd_item<2> it) {
-                    // Global index
-                    int x = it.get_global_id(0);
-                    int y = it.get_global_id(1);
-
-                    // Group index
-                    int bx = it.get_group(0);
-                    int by = it.get_group(1);
-                    
-                    // Local index in the work-group
-                    int tx = it.get_local_id(0);
-                    int ty = it.get_local_id(1);
-
-                    // Index of the first tile to be processed
-                    int aBegin = M * TILE_SIZE * bx;
-                    // Index of the last tile of A matrix to be processed
-                    int aEnd = aBegin + M - 1;
-                    // Step size
-                    int aStep = TILE_SIZE;
-
-                    // Index of the first tile of B matrix to be processed
-                    int bBegin = TILE_SIZE * by;
-                    // Step size
-                    int bStep = TILE_SIZE * K;
-                    
-                    float Csub = 0.0f;
-                    for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
-                        // Load the tile in the local memory (each thread loads one element of A and one element of B)
-                        tileA[tx][ty] = A_acc[a + M * tx + ty];
-                        tileB[tx][ty] = B_acc[b + K * tx + ty];
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE, C_FACTOR>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
             
-                        it.barrier(access::fence_space::local_space);
-                        
-                        // Each thread computes one element using the loaded tile
-                        
-                        #pragma unroll UNROLL_STEP_SIZE
-                        for(int k = 0; k < TILE_SIZE; k++)
-                            Csub += tileA[tx][k] * tileB[k][ty];
-                        
-                        
-                        it.barrier(access::fence_space::local_space);
-                    }
-
-                    // Writes in global memory
-                    C_acc[y + x * K] = Csub;
-                });
-                */
             });
-            
+
             myQueue.wait_and_throw();
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';
@@ -218,30 +197,30 @@ int main(int argc, char **argv) {
         std::cout << "Elapsed kernel time in microseconds: " << ((end_time - start_time) / 1.0e3 )<< " μs" << std::endl;
 
         if(N < 32 && M < 32 && K < 32) {
-            for(int i {0}; i < N ; i++) {
-                for(int j {0}; j < M; j++)
+            for(size_t i {0}; i < N ; i++) {
+                for(size_t j {0}; j < M; j++)
                     std::cout << "A[" << i << "][" << j << "] = " << A[i * M + j] << " ";
                 std::cout << std::endl;
             }
             std::cout << std::endl;
             
-            for(int i {0}; i < M ; i++) {
-                for(int j {0}; j < K; j++)
+            for(size_t i {0}; i < M ; i++) {
+                for(size_t j {0}; j < K; j++)
                     std::cout << "B[" << i << "][" << j << "] = " << B[i * K + j] << " ";
                 std::cout << std::endl;
             }
             std::cout << std::endl;
 
-            for(int i {0}; i < N ; i++) {
-                for(int j {0}; j < K; j++)
+            for(size_t i {0}; i < N ; i++) {
+                for(size_t j {0}; j < K; j++)
                     std::cout << "C[" << i << "][" << j << "] = " << C[i * K + j] << " ";
                 std::cout << std::endl;
             }
         }
 
-        for(int i {0}; i < N ; i++) 
-            for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+        for(size_t i {0}; i < N ; i++) 
+            for(size_t j {0}; j < K; j++)
+                if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
@@ -250,9 +229,9 @@ int main(int argc, char **argv) {
     #endif
 
     #ifndef DEBUG
-        for(int i {0}; i < N ; i++) 
-            for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+        for(size_t i {0}; i < N ; i++) 
+            for(size_t j {0}; j < K; j++)
+                if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;

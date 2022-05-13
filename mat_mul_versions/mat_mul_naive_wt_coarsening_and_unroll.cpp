@@ -10,10 +10,6 @@
     #define TILE_SIZE 4
 #endif
 
-#ifndef UNROLL_STEP_SIZE
-    #define UNROLL_STEP_SIZE 1
-#endif
-
 #ifndef C_FACTOR
     #define C_FACTOR 2
 #endif
@@ -26,7 +22,7 @@ using namespace std::chrono;
 */
 
 // Kernel class
-template<int c_factor, int UNROLL_STEP>
+template<int c_factor>
 class MatMulKernel {
     private:
         size_t N, M, K;
@@ -50,7 +46,11 @@ class MatMulKernel {
             }
             
             float acc[c_factor][c_factor] {};
-            #pragma unroll UNROLL_STEP
+            #ifndef UNROLL_STEP_SIZE 
+                #pragma unroll
+            #else
+                #pragma unroll UNROLL_STEP_SIZE 
+            #endif
             for(size_t i = 0; i < M; i++) 
                 #pragma unroll
                 for(int j = 0; j < c_factor; j++) 
@@ -130,7 +130,7 @@ int main(int argc, char **argv) {
                 range local {TILE_SIZE, TILE_SIZE};
                 range global {N/C_FACTOR, K/C_FACTOR};
                 
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<C_FACTOR, UNROLL_STEP_SIZE>(A_acc, B_acc, C_acc, N, M, K)); 
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<C_FACTOR>(A_acc, B_acc, C_acc, N, M, K)); 
             });
             myQueue.wait_and_throw();
         } catch(const std::exception& e) {

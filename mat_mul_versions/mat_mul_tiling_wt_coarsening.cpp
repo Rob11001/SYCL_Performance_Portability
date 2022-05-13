@@ -73,7 +73,7 @@ class MatMulKernel {
                 it.barrier(access::fence_space::local_space);
                
                 // Each thread computes coarse_factor elements using the loaded tile
-                for(int k = 0; k < tile_size * coarse_factor ; k++)
+                for(int k = 0; k < tile_size * coarse_factor; k++)
                     #pragma unroll
                     for(int i {0}; i < coarse_factor; i++)
                         #pragma unroll
@@ -92,6 +92,9 @@ class MatMulKernel {
                 for(int j {0}; j < coarse_factor; j++) {
                     C_acc[baseline + tile_size * j + tile_size * K * i] = Csub[i][j];
                 }
+
+            if(x == 0 && y == 0)
+                printf("Hey\n");
         }
 };
 
@@ -158,7 +161,7 @@ int main(int argc, char **argv) {
                 local_accessor<float, 2> tileA {range {C_FACTOR * TILE_SIZE, C_FACTOR * TILE_SIZE}, cgh};
                 local_accessor<float, 2> tileB {range {C_FACTOR * TILE_SIZE, C_FACTOR * TILE_SIZE}, cgh};
                 
-                // TODO: debug -> work only when C matrix dimensions are multiple of TILE_SIZE
+                // REMEMBER: work only when C matrix dimensions are multiple of TILE_SIZE
                 cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE, C_FACTOR>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
             
             });
