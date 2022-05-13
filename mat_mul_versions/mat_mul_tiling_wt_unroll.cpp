@@ -143,54 +143,6 @@ int main(int argc, char **argv) {
                 
                 // TODO: debug -> work only when C matrix dimensions are multiple of TILE_SIZE
                 cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
-                
-                /*[=] (nd_item<2> it) {
-                    // Global index
-                    int x = it.get_global_id(0);
-                    int y = it.get_global_id(1);
-
-                    // Group index
-                    int bx = it.get_group(0);
-                    int by = it.get_group(1);
-                    
-                    // Local index in the work-group
-                    int tx = it.get_local_id(0);
-                    int ty = it.get_local_id(1);
-
-                    // Index of the first tile to be processed
-                    int aBegin = M * TILE_SIZE * bx;
-                    // Index of the last tile of A matrix to be processed
-                    int aEnd = aBegin + M - 1;
-                    // Step size
-                    int aStep = TILE_SIZE;
-
-                    // Index of the first tile of B matrix to be processed
-                    int bBegin = TILE_SIZE * by;
-                    // Step size
-                    int bStep = TILE_SIZE * K;
-                    
-                    float Csub = 0.0f;
-                    for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
-                        // Load the tile in the local memory (each thread loads one element of A and one element of B)
-                        tileA[tx][ty] = A_acc[a + M * tx + ty];
-                        tileB[tx][ty] = B_acc[b + K * tx + ty];
-            
-                        it.barrier(access::fence_space::local_space);
-                        
-                        // Each thread computes one element using the loaded tile
-                        
-                        #pragma unroll UNROLL_STEP_SIZE
-                        for(int k = 0; k < TILE_SIZE; k++)
-                            Csub += tileA[tx][k] * tileB[k][ty];
-                        
-                        
-                        it.barrier(access::fence_space::local_space);
-                    }
-
-                    // Writes in global memory
-                    C_acc[y + x * K] = Csub;
-                });
-                */
             });
             
             myQueue.wait_and_throw();

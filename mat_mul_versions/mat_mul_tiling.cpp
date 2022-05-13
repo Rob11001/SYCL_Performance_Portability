@@ -138,7 +138,6 @@ int main(int argc, char **argv) {
                 
                 // TODO: debug -> work only when C matrix dimensions are multiple of TILE_SIZE
                 cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
-            
             });
 
             myQueue.wait_and_throw();
