@@ -59,39 +59,43 @@ class MatMulKernel {
             // Step size
             int bStep = (coarse_factor * tile_size) * K;
             
-            float Csub[coarse_factor][coarse_factor] {};
-            for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {    
-                // Load the tile in the local memory (each thread loads coarse_factor x coarse_factor elements from A and from B)
-                #pragma unroll
-                for(int i {0}; i < coarse_factor; i++)
-                    #pragma unroll
-                    for(int j {0}; j < coarse_factor; j++) {
-                        tileA[tx + tile_size * i][ty + tile_size * j] = A_acc[a + M * tx + ty + tile_size * j + tile_size * M * i];
-                        tileB[tx + tile_size * i][ty + tile_size * j] = B_acc[a + K * tx + ty + tile_size * j + tile_size * K * i];
-                    }
+            float Csub[4] {};
+            float temp {};
+            volatile float needed_to_fix_a_bug {0};
+            for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
+                // Load the tile in the local memory (each thread loads 2 * coarse_factor elements from A and from B)
+                tileA[tx][ty] = A_acc[a + M * tx + ty];
+                tileA[tx][ty + tile_size] = A_acc[a + M * tx + ty + tile_size];
+                tileA[tx + tile_size][ty] = A_acc[a + M * tx + ty + tile_size * M];
+                tileA[tx + tile_size][ty + tile_size] = A_acc[a + M * tx + ty + tile_size + tile_size * M];
+
+                tileB[tx][ty] = B_acc[b + K * tx + ty];
+                tileB[tx][ty + tile_size] = B_acc[b + K * tx + ty + tile_size];
+                tileB[tx + tile_size][ty] = B_acc[b + K * tx + ty + tile_size * K];
+                tileB[tx + tile_size][ty + tile_size] = B_acc[b + K * tx + ty + tile_size + tile_size * K];
 
                 it.barrier(access::fence_space::local_space);
-               
+                Csub[3] = needed_to_fix_a_bug;  // Used to fix a optimization bug: on cpu when compiled with -O2/3 flag the last value of the array after the for is not updated, so we use a volatile variable to manually update it
+
                 // Each thread computes coarse_factor elements using the loaded tile
-                for(int k = 0; k < tile_size * coarse_factor ; k++)
-                    #pragma unroll
-                    for(int i {0}; i < coarse_factor; i++)
-                        #pragma unroll
-                        for(int j {0}; j < coarse_factor; j++) {
-                            Csub[i][j] += tileA[tx + tile_size * i][k] * tileB[k][ty + tile_size * j];
-                        }
+                for(int k = 0; k < tile_size * coarse_factor ; k++) {
+                    Csub[0] += tileA[tx][k] * tileB[k][ty];
+                    Csub[1] += tileA[tx][k] * tileB[k][ty + tile_size];
+                    Csub[2] += tileA[tx + tile_size][k] * tileB[k][ty];
+                    Csub[3] += tileA[tx + tile_size][k] * tileB[k][ty + tile_size]; 
+                    temp = Csub[3];
+                }
+                needed_to_fix_a_bug = temp;
                
                 it.barrier(access::fence_space::local_space);
             }
 
             // Writes in global memory the coarse_factor elements that thread has computed
             int baseline = y + x * K;
-            #pragma unroll
-            for(int i {0}; i < coarse_factor; i++)
-                #pragma unroll
-                for(int j {0}; j < coarse_factor; j++) {
-                    C_acc[baseline + tile_size * j + tile_size * K * i] = Csub[i][j];
-                }
+            C_acc[baseline] = Csub[0];
+            C_acc[baseline + tile_size] = Csub[1]; 
+            C_acc[baseline + tile_size * K] = Csub[2];
+            C_acc[baseline + tile_size * (1 + K)] = needed_to_fix_a_bug; 
         }
 };
 
