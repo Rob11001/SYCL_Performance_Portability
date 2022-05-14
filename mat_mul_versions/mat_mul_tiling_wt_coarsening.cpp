@@ -92,9 +92,6 @@ class MatMulKernel {
                 for(int j {0}; j < coarse_factor; j++) {
                     C_acc[baseline + tile_size * j + tile_size * K * i] = Csub[i][j];
                 }
-
-            if(x == 0 && y == 0)
-                printf("Hey\n");
         }
 };
 

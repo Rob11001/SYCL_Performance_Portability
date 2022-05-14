@@ -2,11 +2,11 @@
 import os
 
 files = ("mat_mul_naive", "mat_mul_naive_wt_unroll", "mat_mul_naive_wt_coarsening", "mat_mul_naive_wt_coarsening_and_unroll", "mat_mul_tiling", "mat_mul_tiling_wt_unroll", "mat_mul_tiling_wt_coarsening", "mat_mul_tiling_wt_coarsening_and_unroll")
-sizes = ("1024 1024 1024","2048 2048 2048", "4096 4096 4096", "8192 8192 8192")
+sizes = ("1024 1024 1024","2048 2048 2048", "4096 4096 4096") #, "8192 8192 8192")
 tile_sizes = [4, 8, 16, 32]
-step_sizes = [0, 1, 4, 8, 16, 32, 64]
+step_sizes = [0, 4, 8, 16, 32]
 coarse_factors = [2, 4, 8]
-tests = 1
+tests = 5
 csv_name = "test"
 device_type = (1, 0)
 device_name = {0: "CPU", 1: "GPU"}
@@ -47,20 +47,22 @@ for d_step in range(start_step["device"], len(device_type), 1):
             coarsening_iterations = range(len(coarse_factors)) if need_coarsening_tuning else range(1)
             # Iterations for unroll tuning
             for i in unrolling_iterations:
+                step_size = step_sizes[i]
                 for j in coarsening_iterations:
+                    coarse_factor = coarse_factors[j]
                     # Files compilation
                     print("Compiling...")
                     command = ""
                     if need_unroll_tuning:
-                        if i != 0:
-                            command = "syclcc -O3 {0}.cpp -o {1}.out -DTILE_SIZE={2} -DSELECTOR={3} -DUNROLL_STEP_SIZE={4}".format(file, file, tile_size, device, step_sizes[i])
+                        if step_size != 0:
+                            command = "syclcc -O3 {0}.cpp -o {1}.out -DTILE_SIZE={2} -DSELECTOR={3} -DUNROLL_STEP_SIZE={4}".format(file, file, tile_size, device, step_size)
                         else:
                             command = "syclcc -O3 {0}.cpp -o {1}.out -DTILE_SIZE={2} -DSELECTOR={3}".format(file, file, tile_size, device)
                     else:
                         command = "syclcc -O3 {0}.cpp -o {1}.out -DTILE_SIZE={2} -DSELECTOR={3}".format(file, file, tile_size, device)
                     
                     if need_coarsening_tuning:
-                        command = "{0} -DC_FACTOR={1}".format(command, coarse_factors[j])
+                        command = "{0} -DC_FACTOR={1}".format(command, coarse_factor)
                     
                     os.system(command)
                     
@@ -68,17 +70,17 @@ for d_step in range(start_step["device"], len(device_type), 1):
                     
                     csv_filename = "{0}_{1}_{2}_{3}".format(csv_name, file, device_name[device], tile_size)
                     if need_unroll_tuning:
-                        csv_filename = "{0}_{1}".format(csv_filename, step_sizes[i])
+                        csv_filename = "{0}_{1}".format(csv_filename, step_size)
                     if need_coarsening_tuning:
-                        csv_filename = "{0}_{1}".format(csv_filename, coarse_factors[j])
+                        csv_filename = "{0}_{1}".format(csv_filename, coarse_factor)
                     csv_filename += ".csv"
-                    csv_file = open("{0}/{1}".format("tests", csv_filename), mode="w")
+                    csv_file = open("{0}/{1}/{2}".format("tests", device_name[device], csv_filename), mode="w")
                 
                     print("Creating csv file: {}".format(csv_filename))
                     # headers
                     header = "NxMxK, "
-                    for i in range(tests):
-                        header += "t{0}, k{0}, ".format(i + 1)
+                    for test in range(tests):
+                        header += "t{0}, k{0}, ".format(test + 1)
                     
                     csv_file.write("{0}\n".format(header[0: len(header) - 2]))
 
@@ -87,7 +89,7 @@ for d_step in range(start_step["device"], len(device_type), 1):
                     for size in sizes:
                         test_line = "{0}, ".format(size)
 
-                        for i in range(tests):
+                        for n_test in range(tests):
                             print("./{0}.out {1}".format(file, size))
                             times = os.popen("./{0}.out {1}".format(file, size)).read()
                             if "Error" in times:
