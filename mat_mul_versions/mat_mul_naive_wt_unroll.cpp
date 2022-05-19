@@ -6,8 +6,12 @@
     #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #endif
 
-#ifndef TILE_SIZE
-    #define TILE_SIZE 4
+#ifndef BLOCK_SIZE_X
+    #define BLOCK_SIZE_X 4
+#endif
+
+#ifndef BLOCK_SIZE_Y
+    #define BLOCK_SIZE_Y 4
 #endif
 
 using namespace cl::sycl;
@@ -40,12 +44,12 @@ class MatMulKernel {
             #else
                 #pragma unroll UNROLL_STEP_SIZE 
             #endif
-            for (size_t i = 0; i < M; i++) {
+            for (size_t i = 0; i < M; i++) 
                 acc += A_acc[i + row * M] * B_acc[col + i * K]; // Reads from global memory
-            }
-
+            
             // Writes in global memory
-            C_acc[col + row * K] = acc; 
+            C_acc[col + row * K] = acc;
+            
         }
 };
 
@@ -69,7 +73,7 @@ int main(int argc, char **argv) {
     
     // Initialization
     for(int i {0}; i < N * M; i++)
-        A[i] = 2.0f; //rand() % 5;
+        A[i] = 1.0f; //rand() % 5;
     
     for(int i {0}; i < M * K; i++)
         B[i] = 1.0f; //rand() % 5;
@@ -108,12 +112,12 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {TILE_SIZE, TILE_SIZE};
+                range local {BLOCK_SIZE_X, BLOCK_SIZE_Y};
                 range global {N, K};
                 
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel(A_acc, B_acc, C_acc, N, M , K)); 
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel(A_acc, B_acc, C_acc, N, M, K)); 
             });
-            myQueue.wait_and_throw();
+            
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';
         }     
@@ -154,7 +158,7 @@ int main(int argc, char **argv) {
 
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != 2 * M) {
+                if(C[i * K + j] != M) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
@@ -164,7 +168,7 @@ int main(int argc, char **argv) {
     #ifndef DEBUG
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != 2 * M) {
+                if(C[i * K + j] != M) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;

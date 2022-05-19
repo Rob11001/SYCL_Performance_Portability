@@ -6,13 +6,22 @@
     #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #endif
 
-#ifndef TILE_SIZE
-    #define TILE_SIZE 4
+#ifndef BLOCK_SIZE_X
+    #define BLOCK_SIZE_X 4
 #endif
 
-#ifndef C_FACTOR
-    #define C_FACTOR 2
+#ifndef BLOCK_SIZE_Y
+    #define BLOCK_SIZE_Y 4
 #endif
+
+#ifndef C_FACTOR_X
+    #define C_FACTOR_X 2
+#endif
+
+#ifndef C_FACTOR_Y
+    #define C_FACTOR_Y 2
+#endif
+
 
 using namespace cl::sycl;
 using namespace std::chrono;
@@ -22,7 +31,7 @@ using namespace std::chrono;
 */
 
 // Kernel class
-template<int c_factor>
+template<int c_factor_x, int c_factor_y>
 class MatMulKernel {
     private:
         size_t N, M, K;
@@ -38,28 +47,29 @@ class MatMulKernel {
             int x = it.get_global_id(0);
             int y = it.get_global_id(1);
             
-            int row[c_factor] {}, col[c_factor] {};
+            int row[c_factor_x] {}, col[c_factor_y] {};
             #pragma unroll
-            for(int i = 0; i < c_factor; i++) {
-                row[i] = x + i * N/c_factor;
-                col[i] = y + i * K/c_factor;
-            }
+            for(int i = 0; i < c_factor_x; i++) 
+                row[i] = x + i * N / c_factor_x;
+
+            #pragma unroll
+            for(int j = 0; j < c_factor_y; j++)
+                col[j] = y + j * K / c_factor_y;
             
-            float acc[c_factor][c_factor] {};
+            float acc[c_factor_x][c_factor_y] {};
             
             for(int i = 0; i < M; i++) 
                 #pragma unroll
-                for(int j = 0; j < c_factor; j++) 
+                for(int j = 0; j < c_factor_x; j++) 
                     #pragma unroll
-                    for(int k = 0; k < c_factor; k++) {
+                    for(int k = 0; k < c_factor_y; k++) {
                         acc[j][k] += A_acc[i + row[j] * M] * B_acc[col[k] + i * K];
                     }
-            //printf("T: %d,%d: acc[%d][%d]=%f\n", x, y, 2, 3, acc[2][3]);
 
             #pragma unroll
-            for(int i = 0; i < c_factor; ++i)
+            for(int i = 0; i < c_factor_x; ++i)
                 #pragma unroll
-                for(int j = 0; j < c_factor; ++j)
+                for(int j = 0; j < c_factor_y; ++j)
                     C_acc[col[j] + row[i] * K] = acc[i][j];
         }
         
@@ -125,10 +135,10 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {TILE_SIZE, TILE_SIZE};
-                range global {N/C_FACTOR, K/C_FACTOR};
+                range local {BLOCK_SIZE_X, BLOCK_SIZE_Y};
+                range global {N / C_FACTOR_X, K / C_FACTOR_Y};
                 
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<C_FACTOR>(A_acc, B_acc, C_acc, N, M, K)); 
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<C_FACTOR_X, C_FACTOR_Y>(A_acc, B_acc, C_acc, N, M, K)); 
             });
             myQueue.wait_and_throw();
         } catch(const std::exception& e) {

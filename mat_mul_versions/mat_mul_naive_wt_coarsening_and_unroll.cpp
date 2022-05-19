@@ -6,13 +6,22 @@
     #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #endif
 
-#ifndef TILE_SIZE
-    #define TILE_SIZE 4
+#ifndef BLOCK_SIZE_X
+    #define BLOCK_SIZE_X 4
 #endif
 
-#ifndef C_FACTOR
-    #define C_FACTOR 2
+#ifndef BLOCK_SIZE_Y
+    #define BLOCK_SIZE_Y 4
 #endif
+
+#ifndef C_FACTOR_X
+    #define C_FACTOR_X 2
+#endif
+
+#ifndef C_FACTOR_Y
+    #define C_FACTOR_Y 2
+#endif
+
 
 using namespace cl::sycl;
 using namespace std::chrono;
@@ -22,7 +31,7 @@ using namespace std::chrono;
 */
 
 // Kernel class
-template<int c_factor>
+template<int c_factor_x, int c_factor_y>
 class MatMulKernel {
     private:
         size_t N, M, K;
@@ -34,35 +43,39 @@ class MatMulKernel {
         MatMulKernel(const accessor<float, 1, access_mode::read>& A_acc, const accessor<float, 1, access_mode::read>& B_acc, const accessor<float, 1, access_mode::write>& C_acc, const size_t& N, const size_t& M, const size_t& K):
             A_acc(A_acc), B_acc(B_acc), C_acc(C_acc), N(N), M(M), K(K) {}
 
-        void operator()(nd_item<2> it) const {
+        void operator()(nd_item<2> it) const {  
             int x = it.get_global_id(0);
             int y = it.get_global_id(1);
             
-            int row[c_factor] {}, col[c_factor] {};
+            int row[c_factor_x] {}, col[c_factor_y] {};
             #pragma unroll
-            for(size_t i = 0; i < c_factor; i++) {
-                row[i] = x + i * N/c_factor;
-                col[i] = y + i * K/c_factor;
-            }
+            for(int i = 0; i < c_factor_x; i++) 
+                row[i] = x + i * N / c_factor_x;
+
+            #pragma unroll
+            for(int j = 0; j < c_factor_y; j++)
+                col[j] = y + j * K / c_factor_y;
             
-            float acc[c_factor][c_factor] {};
+            float acc[c_factor_x][c_factor_y] {};
+            
             #ifndef UNROLL_STEP_SIZE 
                 #pragma unroll
             #else
                 #pragma unroll UNROLL_STEP_SIZE 
             #endif
-            for(size_t i = 0; i < M; i++) 
+            for(int i = 0; i < M; i++) 
                 #pragma unroll
-                for(int j = 0; j < c_factor; j++) 
+                for(int j = 0; j < c_factor_x; j++) 
                     #pragma unroll
-                    for(int k = 0; k < c_factor; k++) 
+                    for(int k = 0; k < c_factor_y; k++) {
                         acc[j][k] += A_acc[i + row[j] * M] * B_acc[col[k] + i * K];
-            
+                    }
+
             #pragma unroll
-            for(int j = 0; j < c_factor; j++)
-                    #pragma unroll
-                    for(int k = 0; k < c_factor; k++)
-                        C_acc[col[k] + row[j] * K] = acc[j][k];
+            for(int i = 0; i < c_factor_x; ++i)
+                #pragma unroll
+                for(int j = 0; j < c_factor_y; ++j)
+                    C_acc[col[j] + row[i] * K] = acc[i][j];
         }
         
 };
@@ -88,10 +101,10 @@ int main(int argc, char **argv) {
     
     // Initialization
     for(int i {0}; i < N * M; i++)
-        A[i] = 3.0f; //rand() % 5;
+        A[i] = (i % 2);
     
     for(int i {0}; i < M * K; i++)
-        B[i] = 1.0f; //rand() % 5;
+        B[i] = (i + 1) % 2;
     
     for(int i {0}; i < N * K; i++)
         C[i] = 0.0f;
@@ -127,10 +140,10 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {TILE_SIZE, TILE_SIZE};
-                range global {N/C_FACTOR, K/C_FACTOR};
+                range local {BLOCK_SIZE_X, BLOCK_SIZE_Y};
+                range global {N / C_FACTOR_X, K / C_FACTOR_Y};
                 
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<C_FACTOR>(A_acc, B_acc, C_acc, N, M, K)); 
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<C_FACTOR_X, C_FACTOR_Y>(A_acc, B_acc, C_acc, N, M, K)); 
             });
             myQueue.wait_and_throw();
         } catch(const std::exception& e) {
@@ -173,7 +186,7 @@ int main(int argc, char **argv) {
 
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != 3 * M) {
+                if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
@@ -183,7 +196,7 @@ int main(int argc, char **argv) {
     #ifndef DEBUG
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
-                if(C[i * K + j] != 3 * M) {
+                if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;

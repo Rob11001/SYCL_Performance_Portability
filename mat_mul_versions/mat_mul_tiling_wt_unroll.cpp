@@ -1,12 +1,19 @@
 #include <iostream>
 #include <CL/sycl.hpp>
 
+#define MAX(a,b) (((a)>(b))?(a):(b))
+#define MIN(a,b) (((a)<(b))?(a):(b))
+
 #ifndef SELECTOR
     #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #endif
 
-#ifndef TILE_SIZE
-    #define TILE_SIZE 4
+#ifndef BLOCK_SIZE_X
+    #define BLOCK_SIZE_X 4
+#endif
+
+#ifndef BLOCK_SIZE_Y
+    #define BLOCK_SIZE_Y 4
 #endif
 
 using namespace cl::sycl;
@@ -35,6 +42,7 @@ class MatMulKernel {
             // Global index
             int x = it.get_global_id(0);
             int y = it.get_global_id(1);
+            
             // Group index
             int bx = it.get_group(0);
             int by = it.get_group(1);
@@ -136,15 +144,15 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {TILE_SIZE, TILE_SIZE};
+                range local {BLOCK_SIZE_X, BLOCK_SIZE_Y};
                 range global {N, K};
                 local_accessor<float, 2> tileA {local, cgh};
                 local_accessor<float, 2> tileB {local, cgh};
                 
                 // TODO: debug -> work only when C matrix dimensions are multiple of TILE_SIZE
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<BLOCK_SIZE_X>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
             });
-            
+
             myQueue.wait_and_throw();
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';

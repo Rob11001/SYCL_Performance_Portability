@@ -6,8 +6,12 @@
     #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #endif
 
-#ifndef TILE_SIZE
-    #define TILE_SIZE 4
+#ifndef BLOCK_SIZE_X
+    #define BLOCK_SIZE_X 4
+#endif
+
+#ifndef BLOCK_SIZE_Y
+    #define BLOCK_SIZE_Y 4
 #endif
 
 using namespace cl::sycl;
@@ -103,7 +107,7 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {TILE_SIZE, TILE_SIZE};
+                range local {BLOCK_SIZE_X, BLOCK_SIZE_Y};
                 range global {N, K};
                 
                 cgh.parallel_for(nd_range{global, local}, MatMulKernel(A_acc, B_acc, C_acc, N, M, K)); 

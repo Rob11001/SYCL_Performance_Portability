@@ -1,16 +1,26 @@
 #include <iostream>
 #include <CL/sycl.hpp>
 
+#define MIN(a,b) (((a)<(b))?(a):(b))
+
 #ifndef SELECTOR
     #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #endif
 
-#ifndef TILE_SIZE
-    #define TILE_SIZE 4
+#ifndef BLOCK_SIZE_X
+    #define BLOCK_SIZE_X 4
 #endif
 
-#ifndef C_FACTOR
-    #define C_FACTOR 2
+#ifndef BLOCK_SIZE_Y
+    #define BLOCK_SIZE_Y 4
+#endif
+
+#ifndef C_FACTOR_X
+    #define C_FACTOR_X 2
+#endif
+
+#ifndef C_FACTOR_Y
+    #define C_FACTOR_Y 2
 #endif
 
 using namespace cl::sycl;
@@ -21,7 +31,7 @@ using namespace std::chrono;
 */
 
 // Kernel class
-template<int tile_size, int coarse_factor>
+template<int tile_size, int coarse_factor_x, int coarse_factor_y>
 class MatMulKernel {
     private:
         size_t N, M, K;
@@ -41,49 +51,45 @@ class MatMulKernel {
             int by = it.get_group(1);
             
             // Local index in the work-group
-            int tx = it.get_local_id(0);
-            int ty = it.get_local_id(1);
+            int tx = it.get_local_id(0) * coarse_factor_x;
+            int ty = it.get_local_id(1) * coarse_factor_y;
 
             // Global index
-            int x = bx * (coarse_factor * tile_size) + tx; // every work-group load a tile of coarse_factor x tile_size dimension
-            int y = by * (coarse_factor * tile_size) + ty;
+            int x = bx * (tile_size) + tx;
+            int y = by * (tile_size) + ty;
 
             // Index of the first tile to be processed
-            int aBegin = M * (coarse_factor * tile_size) * bx;
+            int aBegin = M * (tile_size) * bx;
             // Index of the last tile of A matrix to be processed
             int aEnd = aBegin + M - 1;
             // Step size
-            int aStep = coarse_factor * tile_size;
+            int aStep = tile_size;
             // Index of the first tile of B matrix to be processed
-            int bBegin = (coarse_factor * tile_size) * by;
+            int bBegin = (tile_size) * by;
             // Step size
-            int bStep = (coarse_factor * tile_size) * K;
+            int bStep = (tile_size) * K;
             
-            float Csub[coarse_factor][coarse_factor] {};
+            float Csub[coarse_factor_x][coarse_factor_y] {};
             for(int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {    
                 // Load the tile in the local memory (each thread loads coarse_factor x coarse_factor elements from A and from B)
                 #pragma unroll
-                for(int i {0}; i < coarse_factor; i++)
+                for(int i {0}; i < coarse_factor_x; i++)
                     #pragma unroll
-                    for(int j {0}; j < coarse_factor; j++) {
-                        tileA[tx + tile_size * i][ty + tile_size * j] = A_acc[a + M * tx + ty + tile_size * j + tile_size * M * i];
-                        tileB[tx + tile_size * i][ty + tile_size * j] = B_acc[a + K * tx + ty + tile_size * j + tile_size * K * i];
+                    for(int j {0}; j < coarse_factor_y; j++) {
+                        tileA[tx + i][ty + j] = A_acc[a + M * tx + ty + i * M + j];
+                        tileB[tx + i][ty + j] = B_acc[a + K * tx + i * K + ty + j ];
                     }
 
                 it.barrier(access::fence_space::local_space);
                
                 // Each thread computes coarse_factor elements using the loaded tile
-                #ifndef UNROLL_STEP_SIZE 
+        
+                for(int k = 0; k < tile_size; k++)
                     #pragma unroll
-                #else
-                    #pragma unroll UNROLL_STEP_SIZE 
-                #endif
-                for(int k {0}; k < tile_size * coarse_factor; k++)
-                    #pragma unroll
-                    for(int i {0}; i < coarse_factor; i++)
+                    for(int i {0}; i < coarse_factor_x; i++)
                         #pragma unroll
-                        for(int j {0}; j < coarse_factor; j++) {
-                            Csub[i][j] += tileA[tx + tile_size * i][k] * tileB[k][ty + tile_size * j];
+                        for(int j {0}; j < coarse_factor_y; j++) {
+                            Csub[i][j] += tileA[tx + i][k] * tileB[k][ty + j];
                         }
                
                 it.barrier(access::fence_space::local_space);
@@ -92,10 +98,10 @@ class MatMulKernel {
             // Writes in global memory the coarse_factor elements that thread has computed
             int baseline = y + x * K;
             #pragma unroll
-            for(int i {0}; i < coarse_factor; i++)
+            for(int i {0}; i < coarse_factor_x; i++)
                 #pragma unroll
-                for(int j {0}; j < coarse_factor; j++) {
-                    C_acc[baseline + tile_size * j + tile_size * K * i] = Csub[i][j];
+                for(int j {0}; j < coarse_factor_y; j++) {
+                    C_acc[baseline + i * K + j] = Csub[i][j];
                 }
         }
 };
@@ -158,14 +164,14 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {TILE_SIZE, TILE_SIZE};
-                range global {N/C_FACTOR, K/C_FACTOR};
-                local_accessor<float, 2> tileA {range {C_FACTOR * TILE_SIZE, C_FACTOR * TILE_SIZE}, cgh};
-                local_accessor<float, 2> tileB {range {C_FACTOR * TILE_SIZE, C_FACTOR * TILE_SIZE}, cgh};
+                // Important: block_size_x and block_size_y need to be equal to work properly (tiles must be squared)
+                range local {BLOCK_SIZE_X / C_FACTOR_X, BLOCK_SIZE_Y / C_FACTOR_Y};
+                range global {N / C_FACTOR_X, K / C_FACTOR_Y};
+                local_accessor<float, 2> tileA {range {BLOCK_SIZE_X, BLOCK_SIZE_Y}, cgh};
+                local_accessor<float, 2> tileB {range {BLOCK_SIZE_X, BLOCK_SIZE_Y}, cgh};
                 
                 // REMEMBER: work only when C matrix dimensions are multiple of TILE_SIZE
-                
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE, C_FACTOR>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<BLOCK_SIZE_X, C_FACTOR_X, C_FACTOR_Y>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
             
             });
 

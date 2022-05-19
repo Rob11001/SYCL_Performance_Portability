@@ -1,12 +1,19 @@
 #include <iostream>
 #include <CL/sycl.hpp>
 
+#define MAX(a,b) (((a)>(b))?(a):(b))
+#define MIN(a,b) (((a)<(b))?(a):(b))
+
 #ifndef SELECTOR
     #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #endif
 
-#ifndef TILE_SIZE
-    #define TILE_SIZE 4
+#ifndef BLOCK_SIZE_X
+    #define BLOCK_SIZE_X 4
+#endif
+
+#ifndef BLOCK_SIZE_Y
+    #define BLOCK_SIZE_Y 4
 #endif
 
 using namespace cl::sycl;
@@ -35,6 +42,7 @@ class MatMulKernel {
             // Global index
             int x = it.get_global_id(0);
             int y = it.get_global_id(1);
+            
             // Group index
             int bx = it.get_group(0);
             int by = it.get_group(1);
@@ -59,15 +67,15 @@ class MatMulKernel {
                 // Load the tile in the local memory (each thread loads one element of A and one element of B)
                 tileA[tx][ty] = A_acc[a + M * tx + ty];
                 tileB[tx][ty] = B_acc[b + K * tx + ty];
-    
+                
                 it.barrier(access::fence_space::local_space);
                 
-                // Each thread computes one element using the loaded tile
                 for(int k = 0; k < tile_size; k++)
                     Csub += tileA[tx][k] * tileB[k][ty];
                 
                 it.barrier(access::fence_space::local_space);
             }
+
             // Writes in global memory
             C_acc[y + x * K] = Csub; 
         }
@@ -93,13 +101,13 @@ int main(int argc, char **argv) {
     float *C = static_cast<float *>(malloc(sizeof(float) * N * K));
 
     // Initialization
-    for(int i {0}; i < N * M; i++)
-        A[i] = 1.0f; // rand() % 5;
+    for(size_t i {0}; i < N * M; i++)
+        A[i] = rand() % 5; //(i % 2);
     
-    for(int i {0}; i < M * K; i++)
-        B[i] = 1.0f; //rand() % 5;
+    for(size_t i {0}; i < M * K; i++)
+        B[i] = rand() % 5; //(i + 1) % 2;
     
-    for(int i {0}; i < N * K; i++)
+    for(size_t i {0}; i < N * K; i++)
         C[i] = 0.0f;
     
     // Use of RAII
@@ -131,13 +139,14 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {TILE_SIZE, TILE_SIZE};
+                // Important: BLOCK_SIZE_X and BLOCK_SIZE_Y need to be equal to work (square tiles)
+                range local {BLOCK_SIZE_X, BLOCK_SIZE_Y};
                 range global {N, K};
                 local_accessor<float, 2> tileA {local, cgh};
                 local_accessor<float, 2> tileB {local, cgh};
                 
                 // TODO: debug -> work only when C matrix dimensions are multiple of TILE_SIZE
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<BLOCK_SIZE_X>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
             });
 
             myQueue.wait_and_throw();
@@ -184,22 +193,32 @@ int main(int argc, char **argv) {
                     std::cout << "C[" << i << "][" << j << "] = " << C[i * K + j] << " ";
                 std::cout << std::endl;
             }
+
         }
 
-        for(int i {0}; i < N ; i++) 
-            for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+        float *C_seq = static_cast<float *>(malloc(sizeof(float) * N * K));
+
+        for (int i {0}; i < N; i++)
+            for (int k=0; k < M; k++)
+                for (int j = 0; j < K; j++)
+                    C_seq[i * K  + j] += A[i * M + k] * B[k * K + j];
+
+        for(size_t i {0}; i < N ; i++) 
+            for(size_t j {0}; j < K; j++)
+                if(C[i * K + j] != C_seq[i * K + j]) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
                 }
 
+        free(C_seq);
+
     #endif
 
     #ifndef DEBUG
-        for(int i {0}; i < N ; i++) 
-            for(int j {0}; j < K; j++)
-                if(C[i * K + j] != M) {
+        for(size_t i {0}; i < N ; i++) 
+            for(size_t j {0}; j < K; j++)
+                if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
