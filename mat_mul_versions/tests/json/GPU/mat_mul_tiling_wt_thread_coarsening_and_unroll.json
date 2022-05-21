@@ -3,29 +3,29 @@
     "optimization_method": "bayesian_optimization",
     "design_of_experiment": {
         "doe_type": "random sampling",
-        "number_of_samples": 5
+        "number_of_samples": 15
     },
     "models": {
         "model": "random_forest"
     },
     "number_of_repetitions": 5,
     "optimization_objectives": ["Time"],
-    "optimization_iterations": 25,
+    "optimization_iterations": 20,
     "input_parameters" : {
         "tile_size": {
             "parameter_type" : "ordinal",
             "values" : [4, 8, 16, 32, 64],
-            "parameter_default" : 4
+            "parameter_default" : 64
         },
         "coarse_factor_x": {
             "parameter_type": "ordinal",
             "values": [2, 4, 8],
-            "parameter_default": 2
+            "parameter_default": 8
         },
         "coarse_factor_y": {
             "parameter_type": "ordinal",
             "values": [2, 4, 8],
-            "parameter_default": 2
+            "parameter_default": 4
         },
         "unroll_step": {
             "parameter_type": "ordinal",

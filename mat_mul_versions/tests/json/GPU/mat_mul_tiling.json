@@ -3,14 +3,14 @@
     "optimization_method": "bayesian_optimization",
     "design_of_experiment": {
         "doe_type": "random sampling",
-        "number_of_samples": 5
+        "number_of_samples": 4
     },
     "models": {
         "model": "random_forest"
     },
-    "number_of_repetitions": 5,
+    "number_of_repetitions": 1,
     "optimization_objectives": ["Time"],
-    "optimization_iterations": 10,
+    "optimization_iterations": 1,
     "input_parameters" : {
         "tile_size": {
             "parameter_type" : "ordinal",
