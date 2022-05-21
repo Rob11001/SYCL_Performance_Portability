@@ -1,0 +1,31 @@
+{
+    "application_name": "mat_mul_tiling_wt_thread_coarsening_CPU",
+    "optimization_method": "bayesian_optimization",
+    "design_of_experiment": {
+        "doe_type": "random sampling",
+        "number_of_samples": 5
+    },
+    "models": {
+        "model": "random_forest"
+    },
+    "number_of_repetitions": 5,
+    "optimization_objectives": ["Time"],
+    "optimization_iterations": 20,
+    "input_parameters" : {
+        "tile_size": {
+            "parameter_type" : "ordinal",
+            "values" : [8, 16, 32, 64, 128],
+            "parameter_default" : 8
+        },
+        "coarse_factor_x": {
+            "parameter_type": "ordinal",
+            "values": [2, 4, 8],
+            "parameter_default": 2
+        },
+        "coarse_factor_y": {
+            "parameter_type": "ordinal",
+            "values": [2, 4, 8],
+            "parameter_default": 2
+        }
+    }
+}

@@ -8,12 +8,8 @@
     #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #endif
 
-#ifndef BLOCK_SIZE_X
-    #define BLOCK_SIZE_X 4
-#endif
-
-#ifndef BLOCK_SIZE_Y
-    #define BLOCK_SIZE_Y 4
+#ifndef TILE_SIZE
+    #define TILE_SIZE 4
 #endif
 
 using namespace cl::sycl;
@@ -144,13 +140,13 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                range local {BLOCK_SIZE_X, BLOCK_SIZE_Y};
+                range local {TILE_SIZE, TILE_SIZE};
                 range global {N, K};
                 local_accessor<float, 2> tileA {local, cgh};
                 local_accessor<float, 2> tileB {local, cgh};
                 
                 // TODO: debug -> work only when C matrix dimensions are multiple of TILE_SIZE
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<BLOCK_SIZE_X>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
             });
 
             myQueue.wait_and_throw();
@@ -210,6 +206,19 @@ int main(int argc, char **argv) {
     #endif
 
     #ifndef DEBUG
+        #ifndef TEST
+            for(int i {0}; i < N ; i++) 
+                for(int j {0}; j < K; j++)
+                    if(C[i * K + j] != M) {
+                        std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
+                        i = N;
+                        break;
+                    }
+            std::cout << duration_cast<milliseconds>(end - start).count() << ", " << ((end_time - start_time) / 1.0e3 ) << "";
+        #endif
+    #endif
+
+    #ifdef TEST
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
                 if(C[i * K + j] != M) {
@@ -217,7 +226,7 @@ int main(int argc, char **argv) {
                     i = N;
                     break;
                 }
-        std::cout << duration_cast<milliseconds>(end - start).count() << ", " << ((end_time - start_time) / 1.0e3 ) << "";
+        std::cout << duration_cast<milliseconds>(end - start).count() << " ";
     #endif
 
     // Deallocate memory

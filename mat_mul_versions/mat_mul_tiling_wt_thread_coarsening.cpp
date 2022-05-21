@@ -7,12 +7,8 @@
     #define SELECTOR 1 // 1 for GPU, 0 for CPU
 #endif
 
-#ifndef BLOCK_SIZE_X
-    #define BLOCK_SIZE_X 4
-#endif
-
-#ifndef BLOCK_SIZE_Y
-    #define BLOCK_SIZE_Y 4
+#ifndef TILE_SIZE
+    #define TILE_SIZE 4
 #endif
 
 #ifndef C_FACTOR_X
@@ -164,14 +160,14 @@ int main(int argc, char **argv) {
                 accessor B_acc {B_buf, cgh, read_only};
                 accessor C_acc {C_buf, cgh, write_only, no_init};
                 
-                // Important: block_size_x and block_size_y need to be equal to work properly (tiles must be squared)
-                range local {BLOCK_SIZE_X / C_FACTOR_X, BLOCK_SIZE_Y / C_FACTOR_Y};
+                // Important: block_size_x and block_size_y will be equal to TILE_SIZE/C_FACTOR_(X/Y)
+                range local {TILE_SIZE / C_FACTOR_X, TILE_SIZE / C_FACTOR_Y};
                 range global {N / C_FACTOR_X, K / C_FACTOR_Y};
-                local_accessor<float, 2> tileA {range {BLOCK_SIZE_X, BLOCK_SIZE_Y}, cgh};
-                local_accessor<float, 2> tileB {range {BLOCK_SIZE_X, BLOCK_SIZE_Y}, cgh};
+                local_accessor<float, 2> tileA {range {TILE_SIZE, TILE_SIZE}, cgh};
+                local_accessor<float, 2> tileB {range {TILE_SIZE, TILE_SIZE}, cgh};
                 
                 // REMEMBER: work only when C matrix dimensions are multiple of TILE_SIZE
-                cgh.parallel_for(nd_range{global, local}, MatMulKernel<BLOCK_SIZE_X, C_FACTOR_X, C_FACTOR_Y>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
+                cgh.parallel_for(nd_range{global, local}, MatMulKernel<TILE_SIZE, C_FACTOR_X, C_FACTOR_Y>(A_acc, B_acc, C_acc, N, M, K, tileA, tileB));
             
             });
 
@@ -232,14 +228,27 @@ int main(int argc, char **argv) {
     #endif
 
     #ifndef DEBUG
-        for(size_t i {0}; i < N ; i++) 
-            for(size_t j {0}; j < K; j++)
+        #ifndef TEST
+            for(size_t i {0}; i < N ; i++) 
+                for(size_t j {0}; j < K; j++)
+                    if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
+                        std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
+                        i = N;
+                        break;
+                    }
+            std::cout << duration_cast<milliseconds>(end - start).count() << ", " << ((end_time - start_time) / 1.0e3 ) << "";
+        #endif
+    #endif
+
+    #ifdef TEST
+        for(int i {0}; i < N ; i++) 
+            for(int j {0}; j < K; j++)
                 if(C[i * K + j] != ((j + 1) % 2) * (M/2)) {
                     std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
                     i = N;
                     break;
                 }
-        std::cout << duration_cast<milliseconds>(end - start).count() << ", " << ((end_time - start_time) / 1.0e3 ) << "";
+        std::cout << duration_cast<milliseconds>(end - start).count() << " ";
     #endif
 
     // Deallocate memory

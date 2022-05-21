@@ -14,6 +14,8 @@
     #define BLOCK_SIZE_Y 4
 #endif
 
+
+
 using namespace cl::sycl;
 using namespace std::chrono;
 
@@ -161,6 +163,19 @@ int main(int argc, char **argv) {
     #endif
 
     #ifndef DEBUG
+        #ifndef TEST
+            for(int i {0}; i < N ; i++) 
+                for(int j {0}; j < K; j++)
+                    if(C[i * K + j] != M) {
+                        std::cout << "Error: (" << i << ", " << j << "): " << C[i * K + j] << std::endl;
+                        i = N;
+                        break;
+                    }
+            std::cout << duration_cast<milliseconds>(end - start).count() << ", " << ((end_time - start_time) / 1.0e3 ) << "";
+        #endif
+    #endif
+
+    #ifdef TEST
         for(int i {0}; i < N ; i++) 
             for(int j {0}; j < K; j++)
                 if(C[i * K + j] != M) {
@@ -168,7 +183,7 @@ int main(int argc, char **argv) {
                     i = N;
                     break;
                 }
-        std::cout << duration_cast<milliseconds>(end - start).count() << ", " << ((end_time - start_time) / 1.0e3 ) << "";
+        std::cout << duration_cast<milliseconds>(end - start).count() << " ";
     #endif
 
     // Deallocate memory
