@@ -3,8 +3,6 @@ import sys
 from os import listdir
 from os.path import isfile, join
 
-from requests import delete
-
 devices = ["CPU", "GPU"]
 
 for device in devices:
