@@ -6,7 +6,7 @@ files = ("mat_mul_naive", "mat_mul_naive_wt_unroll", "mat_mul_naive_wt_coarsenin
 
 readers = {}
 for file in files:
-    readers[file] = csv.DictReader( open("./{0}.csv".format(file), mode="r"))
+    readers[file] = csv.DictReader( open("./times/{0}.csv".format(file), mode="r"))
 
 
 for i in [1024, 2048, 4096]:
