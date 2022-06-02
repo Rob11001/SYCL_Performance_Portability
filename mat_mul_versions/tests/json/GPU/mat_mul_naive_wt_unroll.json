@@ -1,16 +1,16 @@
 {
-    "application_name": "mat_mul_naive_wt_unroll_CPU",
+    "application_name": "mat_mul_naive_wt_unroll_GPU",
     "optimization_method": "bayesian_optimization",
     "design_of_experiment": {
         "doe_type": "random sampling",
-        "number_of_samples": 5
+        "number_of_samples": 10
     },
     "models": {
         "model": "random_forest"
     },
     "number_of_repetitions": 5,
     "optimization_objectives": ["Time"],
-    "optimization_iterations": 20,
+    "optimization_iterations": 35,
     "input_parameters" : {
         "block_size_x": {
             "parameter_type" : "ordinal",

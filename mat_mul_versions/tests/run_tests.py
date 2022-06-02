@@ -1,3 +1,5 @@
+# Script that runs the test using the parameters found by the hypermapper (Note: reads the parameters for each version from the '{CPU/GPU}/samples/opt' directory)
+
 import csv
 import os
 

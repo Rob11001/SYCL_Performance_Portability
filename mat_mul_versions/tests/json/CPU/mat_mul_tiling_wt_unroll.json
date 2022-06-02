@@ -1,5 +1,5 @@
 {
-    "application_name": "mat_mul_naive_wt_unroll_GPU",
+    "application_name": "mat_mul_tiling_wt_unroll_CPU",
     "optimization_method": "bayesian_optimization",
     "design_of_experiment": {
         "doe_type": "random sampling",
@@ -10,14 +10,9 @@
     },
     "number_of_repetitions": 5,
     "optimization_objectives": ["Time"],
-    "optimization_iterations": 10,
+    "optimization_iterations": 15,
     "input_parameters" : {
-        "block_size_x": {
-            "parameter_type" : "ordinal",
-            "values" : [4, 8, 16, 32],
-            "parameter_default" : 4
-        },
-        "block_size_y": {
+        "tile_size": {
             "parameter_type" : "ordinal",
             "values" : [4, 8, 16, 32],
             "parameter_default" : 4
