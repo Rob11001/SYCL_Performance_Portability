@@ -114,6 +114,8 @@ int main(int argc, char **argv) {
                 
                 cgh.parallel_for(nd_range{global, local}, MatMulKernel(A_acc, B_acc, C_acc, N, M, K)); 
             });
+
+            myQueue.wait_and_throw();
             
         } catch(const std::exception& e) {
             std::cerr << e.what() << '\n';
