@@ -1,7 +1,7 @@
 # This script allows to execute the hypermapper tool on the selected files.
 # The following parameters can be modified to costumize the run:
 #  - files_to_process: indicates the list of file name (cpp files) on which the tool must be executed (Note: for each file there must be a configuration file in the json directory with the same name)
-#  - selector: selects the device on which the files will be runned (0 for CPU, 1 for GPU)
+#  - selector: selects the device on which the files will be run (0 for CPU, 1 for GPU)
 #  - n_test: the number of iteration for each optimization step
 #  - limit: represents the maximum time of execution in ms (the runs that will require more of this will not be rexecuted) (Note: it's only an optimization to discard the configuration which require too much time)
 #
@@ -10,14 +10,14 @@ import sys
 sys.path.insert(0, "/usr/local/lib/python3.8/dist-packages")
 import hypermapper
 
-files_to_process = ["mat_mul_naive"] 
+files_to_process = ["mat_mul_tiling_wt_thread_coarsening_and_unroll"] 
 all_files = ["mat_mul_naive", "mat_mul_naive_wt_unroll", "mat_mul_naive_wt_coarsening", "mat_mul_naive_wt_coarsening_and_unroll",
     "mat_mul_tiling", "mat_mul_tiling_wt_unroll", "mat_mul_tiling_wt_thread_coarsening", "mat_mul_tiling_wt_thread_coarsening_and_unroll"]
 size = [4096, 8192]
 device = ["CPU", "GPU"]
 n_test = 5
 file = " "
-selector = 1
+selector = 0
 limit = 4000
 
 
@@ -54,7 +54,7 @@ def mat_mul(X):
         if "Error" not in str_time and str_time != '':
             time +=  int(str_time)
             if int(str_time) > limit:   # if it's over the limit I can skip to rerun it, because it'll never be the optimum
-                time = time * n_test
+                time = int(str_time) * n_test
                 break
         else:
             time = sys.maxsize # if there've been an error in the configuration (example the configuration is no allowed) we assigned the max time possible to signal the algorithm that this configuration is "bad"

@@ -1,2 +1,0 @@
-block_size_x,block_size_y,coarse_factor_x,coarse_factor_y,unroll_step,Time
-8,16,8,8,8,531.8

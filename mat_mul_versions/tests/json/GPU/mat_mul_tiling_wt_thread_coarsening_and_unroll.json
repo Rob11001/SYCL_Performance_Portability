@@ -10,7 +10,7 @@
     },
     "number_of_repetitions": 5,
     "optimization_objectives": ["Time"],
-    "optimization_iterations": 125,
+    "optimization_iterations": 185,
     "input_parameters" : {
         "tile_size": {
             "parameter_type" : "ordinal",
