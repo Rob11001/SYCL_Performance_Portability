@@ -25,10 +25,10 @@ for file in files:
     header = "NxMxK, "
     if file == "mat_mul_cublas":
         for i in range(tests):
-            header += "t{0}, k{0},".format(i + 1)
+            header += "t{0}, k{0},".format(i)
     else:
         for i in range(tests):
-            header += "t{0},".format(i + 1)
+            header += "t{0},".format(i)
     header += "Avg Time" 
 
     csv_file.write("{0}\n".format(header))
@@ -37,14 +37,14 @@ for file in files:
     avg = 0
     print("Running tests: {}".format(file))
     for size in sizes:
-        test_line = "{0}, ".format(size)
+        test_line = "{0},".format(size)
 
         for i in range(tests):
             print("./{0} {1}".format(file, size))
             times = os.popen("./{0}.out {1}".format(file, size)).read()
             print(times)
             avg += float(times.split(",")[0])
-            test_line += "{0}, ".format(times)
+            test_line += "{0},".format(times)
         avg = avg / tests
         test_line += "{0}".format(avg)
         csv_file.write("{0}\n".format(test_line))
