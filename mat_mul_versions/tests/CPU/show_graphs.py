@@ -42,7 +42,8 @@ for i in [1024, 2048, 4096]:
             'font': dict(size = 28)
         },
         legend = dict(font = dict(size = 18)),
-        legend_title = dict(font = dict(size = 22))
+        legend_title = dict(font = dict(size = 22)),
+        yaxis = dict(tickfont=dict(family='Helvetica', size=20, color='black'))
     )
     fig.update_yaxes(title_font=dict(size=16))
     fig.update_xaxes(title_font=dict(size=16))
@@ -84,7 +85,8 @@ for i in [1024, 2048, 4096]:
             'yanchor': 'top',
             'font': dict(size = 28)
         },
-        legend = dict(font = dict(size = 18))
+        legend = dict(font = dict(size = 18)),
+        yaxis = dict(tickfont=dict(family='Helvetica', size=20, color='black'))
     )
     fig.update_yaxes(title_font=dict(size=16))
     fig.update_xaxes(title_font=dict(size=16))

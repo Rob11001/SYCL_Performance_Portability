@@ -1,4 +1,5 @@
 import math
+from matplotlib.pyplot import xticks
 import pandas as pd
 import plotly.io as io
 import plotly.express as px
@@ -42,7 +43,9 @@ for i in [1024, 2048, 4096, 8192]:
             'font': dict(size = 28)
         },
         legend = dict(font = dict(size = 18)),
-        legend_title = dict(font = dict(size = 22))
+        legend_title = dict(font = dict(size = 22)),
+        yaxis = dict(tickfont=dict(family='Helvetica', size=20, color='black'))
+                    
     )
     fig.update_yaxes(title_font=dict(size=16))
     fig.update_xaxes(title_font=dict(size=16))
@@ -84,7 +87,8 @@ for i in [1024, 2048, 4096, 8192]:
             'yanchor': 'top',
             'font': dict(size = 28)
         },
-        legend = dict(font = dict(size = 18))
+        legend = dict(font = dict(size = 18)),
+        yaxis = dict(tickfont=dict(family='Helvetica', size=20, color='black'))
     )
     fig.update_yaxes(title_font=dict(size=16))
     fig.update_xaxes(title_font=dict(size=16))
