@@ -32,7 +32,7 @@ for i in [1024, 2048, 4096]:
     # Plotly Express
     data = pd.DataFrame(df)
     fig = px.bar(data, y="<b>Version</b>", x="<b>Average Time (ms)</b>", color="<b>Version</b>", title="<b>CPU</b>: {0} x {0}".format(i), text_auto='.2f', orientation="h")
-    fig.update_traces(textfont_size=15, textangle=0, textposition="outside", cliponaxis=False)
+    fig.update_traces(textfont_size=18, textangle=0, textposition="outside", cliponaxis=False)
     fig.update_layout(
         title = {
             'y':0.96,
@@ -42,12 +42,12 @@ for i in [1024, 2048, 4096]:
             'font': dict(size = 28)
         },
         legend = dict(font = dict(size = 18)),
-        legend_title = dict(font = dict(size = 26))
+        legend_title = dict(font = dict(size = 22))
     )
-    fig.update_yaxes(title_font=dict(size=22))
-    fig.update_xaxes(title_font=dict(size=22))
+    fig.update_yaxes(title_font=dict(size=16))
+    fig.update_xaxes(title_font=dict(size=16))
     
-    io.write_image(fig, './plots/all_times_{0}.pdf'.format(i), format='pdf', scale=1, width=2000, height=1000)
+    io.write_image(fig, './plots/all_times_{0}.pdf'.format(i), format='pdf', scale=1, width=1400, height=1000)
 
 # Plots only the four best files with their standard deviation
 best_files = []
@@ -75,7 +75,7 @@ for i in [1024, 2048, 4096]:
     # Plotly Express
     data = pd.DataFrame(df)
     fig = px.bar(data, y="<b>Version</b>", x="<b>Average Time (ms)</b>", color=" ", title="<b>CPU</b>: {0} x {0}".format(i), text_auto='.2f', orientation="h", barmode="group")
-    fig.update_traces(textfont_size=15, textangle=0, textposition="outside", cliponaxis=False)
+    fig.update_traces(textfont_size=18, textangle=0, textposition="outside", cliponaxis=False)
     fig.update_layout(
         title = {
             'y':0.96,
@@ -84,10 +84,10 @@ for i in [1024, 2048, 4096]:
             'yanchor': 'top',
             'font': dict(size = 28)
         },
-        legend = dict(font = dict(size = 22))
+        legend = dict(font = dict(size = 18))
     )
-    fig.update_yaxes(title_font=dict(size=22))
-    fig.update_xaxes(title_font=dict(size=22))
+    fig.update_yaxes(title_font=dict(size=16))
+    fig.update_xaxes(title_font=dict(size=16))
     
-    io.write_image(fig, './plots/best_{0}.pdf'.format(i), format='pdf', scale=1, width=1600, height=1000)
+    io.write_image(fig, './plots/best_{0}.pdf'.format(i), format='pdf', scale=1, width=1400, height=1000)
     #fig.show()

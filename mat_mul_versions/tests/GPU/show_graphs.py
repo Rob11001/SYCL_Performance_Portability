@@ -42,12 +42,12 @@ for i in [1024, 2048, 4096, 8192]:
             'font': dict(size = 28)
         },
         legend = dict(font = dict(size = 18)),
-        legend_title = dict(font = dict(size = 26))
+        legend_title = dict(font = dict(size = 22))
     )
-    fig.update_yaxes(title_font=dict(size=22))
-    fig.update_xaxes(title_font=dict(size=22))
+    fig.update_yaxes(title_font=dict(size=16))
+    fig.update_xaxes(title_font=dict(size=16))
     
-    io.write_image(fig, './plots/all_times_{0}.pdf'.format(i), format='pdf', scale=1, width=2000, height=1000)
+    io.write_image(fig, './plots/all_times_{0}.pdf'.format(i), format='pdf', scale=1, width=1400, height=1000)
 
 # Plots only the four best files (on last size) with their standard deviation
 best_files = []
@@ -84,10 +84,10 @@ for i in [1024, 2048, 4096, 8192]:
             'yanchor': 'top',
             'font': dict(size = 28)
         },
-        legend = dict(font = dict(size = 22))
+        legend = dict(font = dict(size = 18))
     )
-    fig.update_yaxes(title_font=dict(size=22))
-    fig.update_xaxes(title_font=dict(size=22))
+    fig.update_yaxes(title_font=dict(size=16))
+    fig.update_xaxes(title_font=dict(size=16))
     
-    io.write_image(fig, './plots/best_{0}.pdf'.format(i), format='pdf', scale=1, width=2000, height=1000)
+    io.write_image(fig, './plots/best_{0}.pdf'.format(i), format='pdf', scale=1, width=1400, height=1000)
     #fig.show()
