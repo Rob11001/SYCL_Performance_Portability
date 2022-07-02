@@ -89,5 +89,5 @@ for i in [1024, 2048, 4096]:
     fig.update_yaxes(title_font=dict(size=22))
     fig.update_xaxes(title_font=dict(size=22))
     
-    io.write_image(fig, './plots/best_{0}.pdf'.format(i), format='pdf', scale=1, width=2000, height=1000)
+    io.write_image(fig, './plots/best_{0}.pdf'.format(i), format='pdf', scale=1, width=1600, height=1000)
     #fig.show()
