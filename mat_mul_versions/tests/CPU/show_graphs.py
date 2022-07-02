@@ -44,9 +44,10 @@ for i in [1024, 2048, 4096]:
         legend = dict(font = dict(size = 10)),
         legend_title = dict(font = dict(size = 10)),
         yaxis = dict(tickfont=dict(family='Helvetica', size=20, color='black')),
+        xaxis = dict(tickfont=dict(family='Helvetica', size=20, color='black')),
     )
     fig.update_yaxes(title_font=dict(size=16))
-    fig.update_xaxes(title_font=dict(size=16))
+    fig.update_xaxes(title_font=dict(size=20))
     fig.update(layout_showlegend=False)
     
     io.write_image(fig, './plots/all_times_{0}.pdf'.format(i), format='pdf', scale=1, width=1400, height=1000)
@@ -87,10 +88,11 @@ for i in [1024, 2048, 4096]:
             'font': dict(size = 28)
         },
         legend = dict(font = dict(size = 18)),
-        yaxis = dict(tickfont=dict(family='Helvetica', size=20, color='black'))
+        yaxis = dict(tickfont=dict(family='Helvetica', size=20, color='black')),
+        xaxis = dict(tickfont=dict(family='Helvetica', size=20, color='black')),
     )
     fig.update_yaxes(title_font=dict(size=16))
-    fig.update_xaxes(title_font=dict(size=16))
+    fig.update_xaxes(title_font=dict(size=20))
     
     io.write_image(fig, './plots/best_{0}.pdf'.format(i), format='pdf', scale=1, width=1400, height=1000)
     #fig.show()
